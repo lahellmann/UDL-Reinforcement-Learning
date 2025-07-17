@@ -2,12 +2,12 @@
 This repository contains a project for the seminar 'Understanding Deep Learning' by Lukas Niehaus in the summer term 2025 at the University of Osnabrück. 
 
 ## Overview
-Reinforcement learning is a type of machine learning where an agent learns to make decisions by interacting with an environment, recieving rewards for good behaviour and penalties for bad behaviour.
+Reinforcement learning is a type of machine learning where an agent learns to make decisions by interacting with an environment, receiving rewards for good behaviour and penalties for bad behaviour.
 
 Chess is therefore a great option for reinforcement learning because 
-- it has clear rules and goals,
-- every move affects future possibilities,
-- it allows the agent to explore, learn from mistakes, and improve over time.
+- It has clear rules and goals,
+- Every move affects future possibilities,
+- It allows the agent to explore, learn from mistakes, and improve over time.
   
 The aim of this project is to develop reinforcement learning agents for bullet chess, in which each player has only 60 seconds in total to complete the game. Unlike traditional chess agents, which focus solely on move quality, our agents are designed to also manage time pressure, learning to make decisions that are not only strong but also fast, when required.
 
@@ -15,7 +15,7 @@ We are going to use Deep Q-Networks (DQN) and agent-critic policies for our agen
 
 ## QuickStart
 To get started quickly and be able to execute the code properly, follow this guide.
-For fastest usage, go to this [jupyter notebook](https://colab.research.google.com/drive/1ae7qFCyGvhH7TT2yE0qTrL9GH5_HAyJ9?usp=sharing) in google collab.
+For fastest usage, go to this [jupyter notebook](https://colab.research.google.com/drive/1ae7qFCyGvhH7TT2yE0qTrL9GH5_HAyJ9?usp=sharing) in Google Colab.
 
 
 First we need to install [Git](#git) to be able to clone this repository.
@@ -82,19 +82,34 @@ conda activate python-chess
 
 ## How to use this repository
 ### Structure of this repository
-`agent_dqn.py` - This file contains all relevant functions and definitions for our agent that uses Deep Q-Networks to learn. ([open](agent_dqn.py))
+```
+.
+├── models/ # Trained models
+├── src/ # Source files
+│ ├── utils.py # Utility functions
+│ ├── environment.py # Custom RL environment
+│ ├── agent_policy_value.py # Policy & value network logic
+│ ├── agent_dqn.py # DQN agent logic
+│ └── play.py # Functions to play with the agent (coming soon)
+├── .gitignore
+├── README.md
+├── environment.yml # Conda environment
+├── main_notebook.ipynb # Main experiment notebook
+└── requirements.txt # Pip dependencies
+```
 
-`agent_policy_value.py` - This file contains all relevant functions and definitions for our agents policy. ([open](agent_policy_value.py))
+### Files and Directories
+- [models/](./models): Trained models.
+- [src/utils.py](./src/utils.py): Utility functions.
+- [src/environment.py](./src/environment.py): Custom RL environment.
+- [src/agent_policy_value.py](./src/agent_policy_value.py): Policy & value network.
+- [src/agent_dqn.py](./src/agent_dqn.py): DQN agent logic.
+- [src/play.py](./src/play.py): Play functions (coming soon).
+- [main_notebook.ipynb](./main_notebook.ipynb): Main experiment notebook.
+- [environment.yml](./environment.yml): Conda environment.
+- [requirements.txt](./requirements.txt): Pip dependencies.
 
-`models/chess_dqn_model.pth` - This file contains the trained DQN-agent. ([open](models/chess_dqn_model.pth))
 
-`environment.py` - This file contains all relevant functions and definitions for the environment our agent acts in. ([open](environment.py))
-
-`main.ipynb` - This notebook contains the script for initializing, training and finally saving the DQN model. We will add the agent-critic model here as well. ([open](main.ipynb))
-
-`play.ipynb` - This notebooks let's you play against our agent in Bullet Chess. You'll enter moves in UCI-format. Have fun! ([open](play.ipynb))
-
-`utils.py` - This file contains useful functions that might be used in the future. ([open](utils.py))
 
 ## References
 <a name="references"></a>
