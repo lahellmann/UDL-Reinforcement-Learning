@@ -1,0 +1,14 @@
+# Environment
+venv
+
+# Cache
+__pycache__/
+.idea/
+.vscode/
+.DS_Store
+
+# Logs
+*.log
+
+# Checkpoints
+models/checkpoint_*

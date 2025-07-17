@@ -3,8 +3,10 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Union, Optional
 import chess
 import numpy as np
+import os
 
-
+# setup folders
+os.makedirs("models", exist_ok=True)
 
 ### Environment ####
 
