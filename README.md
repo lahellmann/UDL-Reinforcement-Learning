@@ -94,7 +94,7 @@ conda activate python-chess
 ├── .gitignore
 ├── README.md
 ├── environment.yml # Conda environment
-├── main_notebook.ipynb # Main experiment notebook
+├── main.ipynb # Main experiment notebook
 └── requirements.txt # Pip dependencies
 ```
 
@@ -105,7 +105,7 @@ conda activate python-chess
 - [src/agent_policy_value.py](./src/agent_policy_value.py): Policy & value network.
 - [src/agent_dqn.py](./src/agent_dqn.py): DQN agent logic.
 - [src/play.py](./src/play.py): Play functions (coming soon).
-- [main_notebook.ipynb](./main_notebook.ipynb): Main experiment notebook.
+- [main.ipynb](./main.ipynb): Main experiment notebook.
 - [environment.yml](./environment.yml): Conda environment.
 - [requirements.txt](./requirements.txt): Pip dependencies.
 
