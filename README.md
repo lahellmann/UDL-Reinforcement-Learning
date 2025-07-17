@@ -73,7 +73,7 @@ pip install -r requirements.txt
 3. Execute the following command to create the environment:
 
 ```bash 
-conda create -f environment.yml
+conda env create -f environment.yml
 ```
 - Activate the virtual environment:
 ```bash
