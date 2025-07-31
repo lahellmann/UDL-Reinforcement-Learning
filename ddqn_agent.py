@@ -11,6 +11,27 @@ import torch.optim as optim
 
 import utils
 
+def load_agent_from_path(path, cfg):
+    agent = DDQNAgent(
+        lr=cfg["agent"]["lr"],
+        gamma=cfg["agent"]["gamma"],
+        epsilon_start=cfg["agent"]["epsilon_start"],
+        epsilon_end=cfg["agent"]["epsilon_end"],
+        epsilon_decay=cfg["agent"]["epsilon_decay"],
+        batch_size=cfg["agent"]["batch_size"],
+        target_update=cfg["agent"]["target_update"],
+        tau=cfg["agent"]["tau"],
+        use_soft_update=cfg["agent"]["use_soft_update"],
+        n_actions=4096,
+        per_alpha=cfg["replay"]["per_alpha"],
+        per_beta_start=cfg["replay"]["per_beta_start"],
+        per_beta_frames=cfg["replay"]["per_beta_frames"],
+        n_step=cfg["agent"]["n_step"],
+        dropout=cfg["agent"]["dropout"],
+        noise_std=cfg["agent"]["noise_std"]
+    )
+    agent.load(path)
+    return agent
 
 
 class DuelingQNet(nn.Module):
