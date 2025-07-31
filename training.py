@@ -1,15 +1,18 @@
-# SECTION 4: TRAINING SYSTEM
 import os
 import random
 import logging
 from datetime import datetime
 from collections import deque, Counter
 from typing import List, Tuple, Dict
+import chess
+import torch
+import torch.nn as nn
 
 import numpy as np
 import utils
 from environment import BulletChessEnv
 from ddqn_agent import DDQNAgent
+from policyvalue_agent import MCTSAgent
 
 import chess
 
@@ -25,18 +28,12 @@ class BulletChessDDQNTrainer:
     - Detailed game statistics and analysis
     """
 
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, env: BulletChessEnv):
         self.cfg = cfg
         utils.seed_everything(cfg.get("seed", 42))
 
         # Initialize environment
-        self.env = BulletChessEnv(
-            time_limit=cfg["env"]["time_limit"],
-            increment=cfg["env"]["increment"],
-            simulate_think=cfg["env"]["simulate_think"],
-            think_lo=cfg["env"]["think_lo"],
-            think_hi=cfg["env"]["think_hi"]
-        )
+        self.env = env
 
         # Initialize agent
         self.agent = DDQNAgent(
@@ -76,11 +73,11 @@ class BulletChessDDQNTrainer:
 
     def setup_logging(self):
         """Initialize logging system with file and console output"""
-        os.makedirs(self.cfg["paths"]["models"], exist_ok=True)
-        os.makedirs(self.cfg["paths"]["logs"], exist_ok=True)
+        os.makedirs(self.cfg["paths"]["models_ddqn"], exist_ok=True)
+        os.makedirs(self.cfg["paths"]["ddqn_logs"], exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(self.cfg["paths"]["logs"], f"ddqn_truly_fixed_{timestamp}.log")
+        log_file = os.path.join(self.cfg["paths"]["ddqn_logs"], f"ddqn_truly_fixed_{timestamp}.log")
 
         # Clear existing handlers
         for h in logging.root.handlers[:]:
@@ -410,13 +407,13 @@ class BulletChessDDQNTrainer:
                 # Save best model
                 if wr > self.best_win_rate:
                     self.best_win_rate = wr
-                    best_path = os.path.join(self.cfg["paths"]["models"], f"best_ddqn_truly_fixed_ep{ep}.pth")
+                    best_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"best_ddqn_truly_fixed_ep{ep}.pth")
                     self.agent.save(best_path)
                     self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
 
             # Periodic checkpointing
             if ep % save_freq == 0:
-                ckpt_path = os.path.join(self.cfg["paths"]["models"], f"ckpt_ddqn_truly_fixed_ep{ep}.pth")
+                ckpt_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"ckpt_ddqn_truly_fixed_ep{ep}.pth")
                 self.agent.save(ckpt_path)
                 self.logger.info(f"Checkpoint saved -> {ckpt_path}")
 
@@ -497,65 +494,321 @@ class BulletChessDDQNTrainer:
                          f"len:{np.mean(lens):.1f}")
         return wr_all, wr_true
 
+class BulletChessAlphaZeroTrainer:
+    def __init__(self, cfg: dict, env: BulletChessEnv):
+        self.cfg = cfg
+        self.env = env
+        self.agent = MCTSAgent(cfg, env)
+        self.replay_buffer = []  # stores (state, policy, value) tuples
+        self.max_buffer_size = cfg["replay"]["capacity"]
+        self.batch_size = cfg["agent"]["batch_size"]
+        self.epochs = cfg["training"]["episodes"]
+        self.best_win_rate = -1.0
 
-def get_truly_fixed_cfg():
-    """
-    Configuration dictionary for training hyperparameters
+        self.optimizer = torch.optim.Adam(self.agent.model.parameters(), lr=cfg["agent"]["lr"])
+        
 
-    Contains all hyperparameters for:
-    - Environment setup (time controls, thinking simulation)
-    - Agent architecture and learning parameters
-    - Experience replay configuration
-    - Training schedule and evaluation
-    - Opponent curriculum
-    - File paths for models and logs
-    """
-    return {
-        "seed": 42,
-        "env": {
-            "time_limit": 60,      # Bullet chess time limit in seconds
-            "increment": 0.0,      # Time increment per move
-            "simulate_think": True, # Simulate realistic thinking time
-            "think_lo": 0.80,      # Minimum thinking time
-            "think_hi": 1.60       # Maximum thinking time
-        },
-        "agent": {
-            "lr": 1e-4,            # Learning rate
-            "gamma": 0.99,         # Discount factor
-            "epsilon_start": 1.0,  # Initial exploration rate
-            "epsilon_end": 0.05,   # Final exploration rate
-            "epsilon_decay": 0.9996, # Exploration decay rate
-            "batch_size": 64,      # Mini-batch size
-            "target_update": 2000, # Hard target update frequency
-            "tau": 0.002,          # Soft target update rate
-            "use_soft_update": True, # Use soft vs hard target updates
-            "n_step": 3,           # N-step learning horizon
-            "dropout": 0.1,        # Network dropout rate
-            "noise_std": 0.01      # Action noise for exploration
-        },
-        "replay": {
-            "capacity": 100000,    # Replay buffer size
-            "per_alpha": 0.6,      # PER priority exponent
-            "per_beta_start": 0.4, # PER importance sampling start
-            "per_beta_frames": 1_000_000 # PER beta annealing frames
-        },
-        "training": {
-            "episodes": 1000,      # Total training episodes
-            "max_moves": 120,      # Maximum moves per game
-            "move_limit_penalty": -3.0, # Penalty for reaching move limit
-            "warmup": 100,         # Episodes before learning starts
-            "log_freq": 50,        # Logging frequency
-            "eval_freq": 150,      # Evaluation frequency
-            "eval_games": 30,      # Games per evaluation
-            "save_freq": 300       # Model saving frequency
-        },
-        "opponent": {
-            "strength_start": 0.0, # Initial opponent strength
-            "strength_end": 0.3    # Final opponent strength
-        },
-        "paths": {
-            "models": "models_ddqn_truly_fixed", # Model save directory
-            "logs": "logs_ddqn_truly_fixed"      # Log save directory
+        utils.seed_everything(cfg.get("seed", 42))
+        self.logger = self.setup_logging()
+
+        # Training statistics
+        self.best_win_rate = -1.0
+        self.stats = {
+            "wins": 0, "losses": 0, "draws": 0,
+            "wins_white": 0, "wins_black": 0,
+            "losses_white": 0, "losses_black": 0,
+            "illegal": 0, "games_played": 0
         }
-    }
+        self.ended_by = Counter()
+
+        # Opponent curriculum parameters
+        self.opp_strength_start = cfg["opponent"]["strength_start"]
+        self.opp_strength_end = cfg["opponent"]["strength_end"]
+
+    def setup_logging(self):
+    #    import logging
+    #    logging.basicConfig(level=logging.INFO)
+    #    return logging.getLogger("alpha_zero_trainer")
+        """Initialize logging system with file and console output"""
+        os.makedirs(self.cfg["paths"]["models_mcts"], exist_ok=True)
+        os.makedirs(self.cfg["paths"]["mcts_logs"], exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(self.cfg["paths"]["mcts_logs"], f"alpha_zero_truly_fixed_{timestamp}.log")
+
+        # Clear existing handlers
+        for h in logging.root.handlers[:]:
+            logging.root.removeHandler(h)
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+            handlers=[logging.FileHandler(log_file), logging.StreamHandler()]
+        )
+        self.logger = logging.getLogger("alpha_zero_trainer")
+        return self.logger
+
+    def self_play_game(self):
+        """Play one full game using MCTS-guided moves, collecting training data."""
+        state = self.env.reset()
+        done = False
+        training_examples = []
+        current_player = 1  # +1 for white, -1 for black
+
+        while not done:
+            board_state = state  # format depends on your env/agent
+
+            # Run MCTS to get action probabilities and selected action
+            pi = self.agent.run_mcts(self.env)  # pi is array of action probabilities
+            action = self.agent.select_action_from_pi(pi)  # sample or take max
+
+            # Store (state, pi, current_player) for training after game ends
+            training_examples.append((board_state, pi, current_player))
+
+            # Step environment
+            state, reward, done, info = self.env.step(action)
+            current_player = -current_player  # switch perspective after each move
+
+        # Assign values to each example based on game outcome
+        result = self.env.get_result()  # e.g. '1-0', '0-1', '1/2-1/2'
+        if result == "1-0":
+            winner = 1
+        elif result == "0-1":
+            winner = -1
+        else:
+            winner = 0
+
+        reason = self.env.get_termination_reason()  # e.g. 'checkmate', 'time_flag', 'draw', etc.
+
+        training_data = []
+        for (state, pi, player) in training_examples:
+            # Value is +1 if player won, -1 if lost, 0 if draw
+            value = winner * player
+            training_data.append((state, pi, value))
+
+        return training_data, result, reason, current_player
+
+    def add_to_buffer(self, data):
+        self.replay_buffer.extend(data)
+        if len(self.replay_buffer) > self.max_buffer_size:
+            excess = len(self.replay_buffer) - self.max_buffer_size
+            self.replay_buffer = self.replay_buffer[excess:]
+
+    def train_network(self):
+        """Train the neural network on a batch from replay buffer."""
+        import random
+        if len(self.replay_buffer) < self.batch_size:
+            return None
+
+        batch = random.sample(self.replay_buffer, self.batch_size)
+        states, pis, values = zip(*batch)
+
+        examples = list(zip(states, pis, values))
+        loss = self.agent.train_step(examples, optimizer=self.optimizer, epochs=self.epochs)
+
+        return loss
+
+    def evaluate(self, n_games: int, ep: int, total_episodes: int,
+                 force_strength: float = None) -> Tuple[float, float]:
+        """
+        Evaluate agent performance against opponent
+
+        Args:
+            n_games: Number of evaluation games
+            ep: Current episode for curriculum
+            total_episodes: Total episodes for curriculum
+            force_strength: Override opponent strength
+
+        Returns:
+            (win_rate_all, win_rate_true) - with and without draws
+        """
+        wins = 0
+        draws = 0
+        losses = 0
+        lens = []
+        wins_white = wins_black = 0
+        losses_white = losses_black = 0
+
+        # Disable exploration during evaluation
+        old_eps = getattr(self.agent, "eps", 0.0)  # dummy in case no .eps
+        if hasattr(self.agent, "eps"):
+            self.agent.eps = 0.0
+
+        eval_strength = force_strength if force_strength is not None else min(0.25,
+            utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, total_episodes) + 0.05)
+
+        # Play evaluation games
+        for i in range(n_games):
+            res = self.play_one(is_training=False, episode_idx=ep,
+                              total_episodes=total_episodes,
+                              force_eval_strength=eval_strength)
+
+            lens.append(res["steps"])
+
+            # Log first few games for debugging
+            if i < 3:
+                self.logger.info(f"EVAL Game {i+1}: {res['outcome']} in {res['steps']} moves, "
+                                f"ended_by: {res['ended_by']}, agent_white: {res['agent_white']}")
+
+            # Update evaluation statistics
+            if res["outcome"] == "win":
+                wins += 1
+                if res["agent_white"]:
+                    wins_white += 1
+                else:
+                    wins_black += 1
+            elif res["outcome"] == "loss":
+                losses += 1
+                if res["agent_white"]:
+                    losses_white += 1
+                else:
+                    losses_black += 1
+            else:
+                draws += 1
+
+        # Restore exploration
+        if hasattr(self.agent, "eps"):
+            self.agent.eps = old_eps
+
+        # Calculate win rates
+        wr_all = wins / max(1, (wins + losses + draws))
+        wr_true = wins / max(1, (wins + losses))
+
+        self.logger.info(f"[EVAL] vs {eval_strength:.2f} | WR_all {wr_all:.3f} | WR_true {wr_true:.3f} | "
+                         f"W:{wins} L:{losses} D:{draws} | "
+                         f"W_white:{wins_white} W_black:{wins_black} | "
+                         f"L_white:{losses_white} L_black:{losses_black} | "
+                         f"len:{np.mean(lens):.1f}")
+        return wr_all, wr_true
+
+    def train(self):
+        episodes = self.cfg["training"]["episodes"]
+        warmup = self.cfg["training"]["warmup"]
+        log_freq = self.cfg["training"]["log_freq"]
+        eval_freq = self.cfg["training"]["eval_freq"]
+        save_freq = self.cfg["training"]["save_freq"]
+
+        losses = deque(maxlen=200)
+
+        for ep in range(1, episodes + 1):
+            res = self.play_one(is_training=True, episode_idx=ep, total_episodes=episodes)
+
+            # Training
+            loss_val = 0.0
+            if ep >= warmup:
+                loss_val = self.train_network()
+                if loss_val:
+                    losses.append(loss_val)
+
+            # Stats
+            total_games = self.stats["wins"] + self.stats["losses"] + self.stats["draws"]
+            wr_all = self.stats["wins"] / max(1, total_games)
+            wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))
+
+            # Logging
+            if ep % log_freq == 0 or ep == 1:
+                opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, episodes)
+                ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
+                self.logger.info(
+                    f"Ep {ep}/{episodes} | {res['outcome']:4s} | "
+                    f"R:{res['reward']:6.2f} | M:{res['steps']:3d} | "
+                    f"WR_all:{wr_all:.3f} | WR_true:{wr_true:.3f} | "
+                    f"L:{(np.mean(losses) if losses else 0):.4f} | "
+                    f"Ww:{self.stats['wins_white']} Wb:{self.stats['wins_black']} "
+                    f"Lw:{self.stats['losses_white']} Lb:{self.stats['losses_black']} | "
+                    f"opp_str:{opp_strength:.3f} | move_limit_rate:{ml_rate:.3f}"
+                )
+
+            # Evaluation
+            if ep % eval_freq == 0:
+                eval_strength = min(0.25, opp_strength + 0.05)
+                wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, episodes, eval_strength)
+                if wr > self.best_win_rate:
+                    self.best_win_rate = wr
+                    best_path = os.path.join(self.cfg["paths"]["models_mcts"], f"best_alphazero_ep{ep}.pth")
+                    self.agent.save(best_path)
+                    self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
+
+            # Checkpoint
+            if ep % save_freq == 0:
+                ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"ckpt_alphazero_ep{ep}.pth")
+                self.agent.save(ckpt_path)
+                self.logger.info(f"Checkpoint saved -> {ckpt_path}")
+
+        self.logger.info("=== FINAL EVALUATION ===")
+        for strength in [0.1, 0.15, 0.2, 0.25, 0.3]:
+            wr, wr_true = self.evaluate(30, episodes, episodes, force_strength=strength)
+            self.logger.info(f"vs {strength:.2f} strength: WR={wr:.3f} (true={wr_true:.3f})")
+
+
+    def play_one(self, is_training=True, episode_idx=0, total_episodes=0, force_eval_strength=None):
+        training_data, result, reason, agent_white = self.self_play_game()
+
+        if is_training:
+            self.add_to_buffer(training_data)
+
+        # Compute basic values
+        steps = self.env.get_move_count()
+        total_reward = 1 if result == "1-0" else -1 if result == "0-1" else 0
+        ended_by = reason
+
+        # Finalize and return
+        return self.finalize_episode(total_reward, ended_by, steps, agent_white)
+
+
+
+    def _map_reason(self, reason: str) -> str:
+        """Map detailed termination reasons to categories"""
+        if "checkmate" in reason:
+            return "mate"
+        if "time_flag" in reason:
+            return "time_flag"
+        if "draw" in reason:
+            return "draw"
+        if "illegal" in reason:
+            return "illegal"
+        if "timeout_or_resignation" in reason:
+            return "timeout_or_resignation"
+        return reason
+
+    def finalize_episode(self, result, reason, steps, agent_white):
+        mapped = self._map_reason(reason)
+
+        self.logger.info(f"Ep {self.stats['games_played'] + 1} result: {result}, reason: {mapped}")
+
+        if self.stats['games_played'] % self.cfg["training"]["save_freq"] == 0:
+            self.agent.save(f"{self.cfg['paths']['models_mcts']}/checkpoint_ep{self.stats['games_played']}.pth")
+
+        # track general result
+        outcome = "draws"
+        if result == 1:
+            outcome = "wins"
+        elif result == -1:
+            outcome = "losses"
+
+         # Track by color
+        if result == 1:
+            if agent_white:
+                self.stats["wins_white"] += 1
+            else:
+                self.stats["wins_black"] += 1
+        elif result == -1:
+            if agent_white:
+                self.stats["losses_white"] += 1
+            else:
+                self.stats["losses_black"] += 1
+
+        # Count termination reasons
+        self.ended_by[mapped] += 1
+        self.stats[outcome] += 1
+        self.stats['games_played'] += 1
+        return {
+            "reward": result,
+            "steps": steps,
+            "outcome": outcome,
+            "result": "1-0" if result == 1 else "0-1" if result == -1 else "1/2-1/2",
+            "agent_white": None,  # Optional, fill if needed
+            "ended_by": reason
+        }
+
 
