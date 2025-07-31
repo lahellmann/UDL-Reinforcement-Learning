@@ -108,7 +108,18 @@ def get_truly_fixed_cfg():
             "strength_end": 0.3    # Final opponent strength
         },
         "paths": {
-            "models": "models_ddqn_truly_fixed", # Model save directory
-            "logs": "logs_ddqn_truly_fixed"      # Log save directory
+            "models_ddqn": "models_ddqn_truly_fixed", # Model save directory
+            "models_mcts": "models_mcts_truly_fixed", # Model save directory
+            "ddqn_logs": "logs_ddqn_truly_fixed",      # Log save directory
+            "mcts_logs": "logs_mcts_truly_fixed"  # Log directory
+        },
+        "model": {
+            "n_actions": 4096,                       # number of possible actions (copied from DDQN)
+            "board_shape": (8, 8, 15)
+        },
+        "mcts": {
+            "mcts_simulations": 10,
+            "c_puct": 1.5
         }
     }
+

@@ -131,11 +131,14 @@ class MCTSAgent:
     """
 
     def __init__(self, cfg: dict, env: BulletChessEnv, device=None):
-        self.model = AlphaZeroNet()
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        #self.model.to(self.device)
+        self.model = AlphaZeroNet().to(self.device)
+
         self.cfg = cfg
         self.env = env
+
+        lr = cfg["agent"]["lr"]
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
       
     def select_action_from_pi(self, pi, temperature=1.0):
         if temperature == 0:
@@ -148,6 +151,7 @@ class MCTSAgent:
         """
         Runs MCTS on the current environment state and returns action probabilities.
         """
+
         mcts = MCTS(
             model=self.model,
             env=deepcopy(env),
@@ -158,7 +162,7 @@ class MCTSAgent:
         return mcts.run()
 
 
-    def train_on_game(self, examples, optimizer, epochs=1):
+    def train_step(self, examples, optimizer, epochs=1):
         """
         Trains the model on a list of (state, policy, value) tuples.
         """
@@ -182,6 +186,8 @@ class MCTSAgent:
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+        return loss.item()
+
     
     def save(self, path: str):
       """Save agent state to file"""
