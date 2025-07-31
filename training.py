@@ -5,16 +5,15 @@ from datetime import datetime
 from collections import deque, Counter
 from typing import List, Tuple, Dict
 import chess
-import torch
-import torch.nn as nn
-
+import time
 import numpy as np
 import utils
+
+
 from environment import BulletChessEnv
 from ddqn_agent import DDQNAgent
 from policyvalue_agent import MCTSAgent
 
-import chess
 
 class BulletChessDDQNTrainer:
     """
@@ -29,12 +28,22 @@ class BulletChessDDQNTrainer:
     """
 
     def __init__(self, cfg: dict, env: BulletChessEnv):
+        """
+        Initializes the BulletChessDDQNTrainer with configuration and environment.
+        Args:
+            cfg (dict): Configuration dictionary containing training parameters.
+            env (BulletChessEnv): The chess environment to interact with.
+        
+        Initializes the trainer with the provided configuration and environment.
+        Sets up the DDQN agent, logging, and training statistics.
+        """
+
         self.cfg = cfg
         utils.seed_everything(cfg.get("seed", 42))
 
         # Initialize environment
         self.env = env
-
+       
         # Initialize agent
         self.agent = DDQNAgent(
             lr=cfg["agent"]["lr"],
@@ -66,13 +75,20 @@ class BulletChessDDQNTrainer:
             "illegal": 0
         }
         self.ended_by = Counter()
+        self.losses = []
 
         # Opponent curriculum parameters
         self.opp_strength_start = cfg["opponent"]["strength_start"]
         self.opp_strength_end = cfg["opponent"]["strength_end"]
 
     def setup_logging(self):
-        """Initialize logging system with file and console output"""
+        """
+        Initialize logging system with file and console output
+        Creates necessary directories for model and log files.
+        Sets up logging configuration to log messages to both a file and the console.
+        Returns:
+            logger (logging.Logger): Configured logger instance.
+        """
         os.makedirs(self.cfg["paths"]["models_ddqn"], exist_ok=True)
         os.makedirs(self.cfg["paths"]["ddqn_logs"], exist_ok=True)
 
@@ -297,7 +313,13 @@ class BulletChessDDQNTrainer:
         return self._finalize_episode(total_reward, steps, agent_is_white, ended_by)
 
     def _map_reason(self, reason: str) -> str:
-        """Map detailed termination reasons to categories"""
+        """
+        Map detailed termination reasons to categories
+        Args:
+            reason: Detailed reason string from environment
+        Returns:
+            str: Mapped category string
+        """
         if "checkmate" in reason:
             return "mate"
         if "time_flag" in reason:
@@ -311,7 +333,16 @@ class BulletChessDDQNTrainer:
         return reason
 
     def _finalize_episode(self, total_reward, steps, agent_is_white, ended_by) -> Dict:
-        """Process episode end and update statistics"""
+        """
+        Process episode end and update statistics
+        Args:
+            total_reward: Total reward accumulated during the episode
+            steps: Number of steps taken in the episode
+            agent_is_white: Whether the agent played as white
+            ended_by: Reason for game termination
+        Returns:
+            Dictionary with episode statistics
+        """
         result = self.env.get_result()
         outcome = "draw"
 
@@ -349,7 +380,7 @@ class BulletChessDDQNTrainer:
             "ended_by": ended_by
         }
 
-    def train(self):
+    def train(self, type: str = "episodes"):
         """
         Main training loop with curriculum learning and evaluation
 
@@ -358,64 +389,121 @@ class BulletChessDDQNTrainer:
         - Regular evaluation against stronger opponents
         - Best model tracking and checkpointing
         - Comprehensive logging of training progress
+
+        Runs the training loop for the specified number of episodes.
+        Collects training data, performs learning updates, and evaluates performance.
+        Tracks statistics such as win rates, losses, and draws.
         """
         episodes = self.cfg["training"]["episodes"]
+        overall_time = self.cfg["training"]["overall_time"]
         warmup = self.cfg["training"]["warmup"]
         log_freq = self.cfg["training"]["log_freq"]
         eval_freq = self.cfg["training"]["eval_freq"]
         save_freq = self.cfg["training"]["save_freq"]
 
-        losses = deque(maxlen=200)
+        if type == "episodes":
+            for ep in range(1, episodes + 1):
+                # Play training game
+                res = self.play_one(is_training=True, episode_idx=ep, total_episodes=episodes)
 
-        for ep in range(1, episodes + 1):
-            # Play training game
-            res = self.play_one(is_training=True, episode_idx=ep, total_episodes=episodes)
+                # Perform learning update after warmup period
+                loss_val = 0.0
+                if ep >= warmup:
+                    loss_val = self.agent.update()
+                    if loss_val:
+                        self.losses.append(loss_val)
 
-            # Perform learning update after warmup period
-            loss_val = 0.0
-            if ep >= warmup:
-                loss_val = self.agent.update()
-                if loss_val:
-                    losses.append(loss_val)
+                # Calculate statistics
+                total_games = self.stats["wins"] + self.stats["losses"] + self.stats["draws"]
+                wr_all = self.stats["wins"] / max(1, total_games)  # Win rate including draws
+                wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))  # Win rate excluding draws
 
-            # Calculate statistics
-            total_games = self.stats["wins"] + self.stats["losses"] + self.stats["draws"]
-            wr_all = self.stats["wins"] / max(1, total_games)  # Win rate including draws
-            wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))  # Win rate excluding draws
+                # Periodic logging
+                if ep % log_freq == 0 or ep == 1:
+                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end,
+                                            ep, episodes)
+                    ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
+                    self.logger.info(
+                        f"Ep {ep:4d}/{episodes} | {res['outcome']:4s} | "
+                        f"R:{res['reward']:6.2f} | M:{res['steps']:3d} | "
+                        f"WR_all:{wr_all:.3f} | WR_true:{wr_true:.3f} | "
+                        f"L:{(np.mean(self.losses) if self.losses else 0):.4f} | "
+                        f"eps:{self.agent.eps:.3f} | buf:{len(self.agent.per_buffer)} | "
+                        f"Ww:{self.stats['wins_white']} Wb:{self.stats['wins_black']} "
+                        f"Lw:{self.stats['losses_white']} Lb:{self.stats['losses_black']} | "
+                        f"opp_str:{opp_strength:.3f} | move_limit_rate:{ml_rate:.3f}"
+                    )
 
-            # Periodic logging
-            if ep % log_freq == 0 or ep == 1:
-                opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end,
-                                           ep, episodes)
-                ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
-                self.logger.info(
-                    f"Ep {ep:4d}/{episodes} | {res['outcome']:4s} | "
-                    f"R:{res['reward']:6.2f} | M:{res['steps']:3d} | "
-                    f"WR_all:{wr_all:.3f} | WR_true:{wr_true:.3f} | "
-                    f"L:{(np.mean(losses) if losses else 0):.4f} | "
-                    f"eps:{self.agent.eps:.3f} | buf:{len(self.agent.per_buffer)} | "
-                    f"Ww:{self.stats['wins_white']} Wb:{self.stats['wins_black']} "
-                    f"Lw:{self.stats['losses_white']} Lb:{self.stats['losses_black']} | "
-                    f"opp_str:{opp_strength:.3f} | move_limit_rate:{ml_rate:.3f}"
-                )
+                # Periodic evaluation
+                if ep % eval_freq == 0:
+                    eval_strength = min(0.25, opp_strength + 0.05)
+                    wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"],
+                                                    ep, episodes, eval_strength)
+                    # Save best model
+                    if wr > self.best_win_rate:
+                        self.best_win_rate = wr
+                        best_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"best_ddqn_truly_fixed_ep{ep}.pth")
+                        self.agent.save(best_path)
+                        self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
 
-            # Periodic evaluation
-            if ep % eval_freq == 0:
-                eval_strength = min(0.25, opp_strength + 0.05)
-                wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"],
-                                                ep, episodes, eval_strength)
-                # Save best model
-                if wr > self.best_win_rate:
-                    self.best_win_rate = wr
-                    best_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"best_ddqn_truly_fixed_ep{ep}.pth")
-                    self.agent.save(best_path)
-                    self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
+                # Periodic checkpointing
+                if ep % save_freq == 0:
+                    ckpt_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"ckpt_ddqn_truly_fixed_ep{ep}.pth")
+                    self.agent.save(ckpt_path)
+                    self.logger.info(f"Checkpoint saved -> {ckpt_path}")
+                elif type == "time":
+                    end_time = time.time() + overall_time
+                    ep = 0
 
-            # Periodic checkpointing
-            if ep % save_freq == 0:
-                ckpt_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"ckpt_ddqn_truly_fixed_ep{ep}.pth")
-                self.agent.save(ckpt_path)
-                self.logger.info(f"Checkpoint saved -> {ckpt_path}")
+                    while time.time() <= end_time:
+                        ep += 1
+                        res = self.play_one(is_training=True, episode_idx=ep, total_episodes=0)
+
+                        # Training
+                        loss_val = 0.0
+                        if ep >= warmup:
+                            loss_val = self.agent.update()
+                            if loss_val:
+                                self.losses.append(loss_val)
+
+                        # Stats
+                        total_games = self.stats["wins"] + self.stats["losses"] + self.stats["draws"]
+                        wr_all = self.stats["wins"] / max(1, total_games)
+                        wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))
+
+                        # Logging
+                        if ep % log_freq == 0 or ep == 1:
+                            elapsed_time = time.time() - (end_time - overall_time)
+                            opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, overall_time)
+                            ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
+
+                            self.logger.info(
+                                f"Time {elapsed_time:.2f}/{overall_time:.2f} | {res['outcome']:4s} | "
+                                f"R:{res['reward']:6.2f} | M:{res['steps']:3d} | "
+                                f"WR_all:{wr_all:.3f} | WR_true:{wr_true:.3f} | "
+                                f"L:{(np.mean(self.losses) if self.losses else 0):.4f} | "
+                                f"eps:{self.agent.eps:.3f} | buf:{len(self.agent.per_buffer)} | "
+                                f"Ww:{self.stats['wins_white']} Wb:{self.stats['wins_black']} "
+                                f"Lw:{self.stats['losses_white']} Lb:{self.stats['losses_black']} | "
+                                f"opp_str:{opp_strength:.3f} | move_limit_rate:{ml_rate:.3f}"
+                            )
+
+                        # Evaluation
+                        if ep % eval_freq == 0:
+                            eval_strength = min(0.25, opp_strength + 0.05)
+                            wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, overall_time, eval_strength)
+                            if wr > self.best_win_rate:
+                                self.best_win_rate = wr
+                                best_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"best_ddqn_time_ep{ep}.pth")
+                                self.agent.save(best_path)
+                                self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
+
+                        # Checkpoint
+                        if ep % save_freq == 0:
+                            ckpt_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"ckpt_ddqn_time_ep{ep}.pth")
+                            self.agent.save(ckpt_path)
+                            self.logger.info(f"Checkpoint saved -> {ckpt_path}")
+
 
         # Final comprehensive evaluation across multiple opponent strengths
         self.logger.info("=== FINAL EVALUATION ===")
@@ -494,8 +582,49 @@ class BulletChessDDQNTrainer:
                          f"len:{np.mean(lens):.1f}")
         return wr_all, wr_true
 
+    def get_losses(self) -> Dict[int, float]:
+        """
+        Get training losses recorded during training
+        Returns:
+            List of losses recorded during training
+        """
+        return self.losses
+    
+    def get_ended_by(self) -> Dict[str, int]:
+        """
+        Get reasons for game endings
+        Returns:
+            Counter mapping reason to count
+        """
+        return dict(self.ended_by)
+    
+
 class BulletChessAlphaZeroTrainer:
+    """Complete training system for AlphaZero-style MCTS agent
+    Features:
+    - Self-play with MCTS-guided moves
+    - Progressive opponent strength curriculum
+    - Comprehensive evaluation and logging
+    - Model checkpointing and best model tracking
+    - Detailed game statistics and analysis
+    """
     def __init__(self, cfg: dict, env: BulletChessEnv):
+        """
+        Initializes the BulletChessAlphaZeroTrainer with configuration and environment.
+        Args:
+            cfg (dict): Configuration dictionary containing training parameters.
+            env (BulletChessEnv): The chess environment to interact with.
+        
+        Initializes the trainer with the provided configuration and environment.
+        Sets up the MCTS agent, replay buffer, and logging.
+        Also initializes training statistics and opponent curriculum parameters.
+        Features:
+            - MCTS agent for self-play
+            - Replay buffer for training data
+            - Logging system for tracking progress
+            - Statistics for game outcomes and performance
+            - Opponent strength curriculum for progressive training
+        """
         self.cfg = cfg
         self.env = env
         self.agent = MCTSAgent(cfg, env)
@@ -504,14 +633,12 @@ class BulletChessAlphaZeroTrainer:
         self.batch_size = cfg["agent"]["batch_size"]
         self.epochs = cfg["training"]["episodes"]
         self.best_win_rate = -1.0
-
-        self.optimizer = torch.optim.Adam(self.agent.model.parameters(), lr=cfg["agent"]["lr"])
         
 
         utils.seed_everything(cfg.get("seed", 42))
         self.logger = self.setup_logging()
 
-        # Training statistics
+        # Initialise training statistics
         self.best_win_rate = -1.0
         self.stats = {
             "wins": 0, "losses": 0, "draws": 0,
@@ -519,17 +646,21 @@ class BulletChessAlphaZeroTrainer:
             "losses_white": 0, "losses_black": 0,
             "illegal": 0, "games_played": 0
         }
-        self.ended_by = Counter()
+        self.ended_by = Counter() # Counter to track reasons for game endings
+        self.losses = []
 
         # Opponent curriculum parameters
         self.opp_strength_start = cfg["opponent"]["strength_start"]
         self.opp_strength_end = cfg["opponent"]["strength_end"]
 
     def setup_logging(self):
-    #    import logging
-    #    logging.basicConfig(level=logging.INFO)
-    #    return logging.getLogger("alpha_zero_trainer")
-        """Initialize logging system with file and console output"""
+        """Initialize logging system with file and console output
+        
+        Creates necessary directories for model and log files.
+        Sets up logging configuration to log messages to both a file and the console.
+        Returns:
+            logger (logging.Logger): Configured logger instance.
+        """
         os.makedirs(self.cfg["paths"]["models_mcts"], exist_ok=True)
         os.makedirs(self.cfg["paths"]["mcts_logs"], exist_ok=True)
 
@@ -549,18 +680,25 @@ class BulletChessAlphaZeroTrainer:
         return self.logger
 
     def self_play_game(self):
-        """Play one full game using MCTS-guided moves, collecting training data."""
+        """Play one full game using MCTS-guided moves, collecting training data.
+        Runs a complete self-play game where the agent plays against itself using MCTS.
+        Collects training examples in the form of (state, policy, value) tuples.
+        Returns:
+            training_data (List[Tuple]): List of training examples collected during the game.
+            result (str): Game result in standard format (e.g. '1-0', '0-1', '1/2-1/2').
+            reason (str): Reason for game end (e.g. 'checkmate', 'time_flag', 'draw').
+            current_player (int): Current player's perspective at game end (+1 for white, -1 for black).
+        """
         state = self.env.reset()
         done = False
         training_examples = []
         current_player = 1  # +1 for white, -1 for black
 
         while not done:
-            board_state = state  # format depends on your env/agent
-
+            board_state = state  # Store current board state
             # Run MCTS to get action probabilities and selected action
             pi = self.agent.run_mcts(self.env)  # pi is array of action probabilities
-            action = self.agent.select_action_from_pi(pi)  # sample or take max
+            action = self.agent.select_action_from_pi(pi) # Select action based on MCTS policy
 
             # Store (state, pi, current_player) for training after game ends
             training_examples.append((board_state, pi, current_player))
@@ -578,7 +716,8 @@ class BulletChessAlphaZeroTrainer:
         else:
             winner = 0
 
-        reason = self.env.get_termination_reason()  # e.g. 'checkmate', 'time_flag', 'draw', etc.
+        # Determine reason for game end
+        reason = info['reason']  # e.g. 'checkmate', 'time_flag', 'draw', etc.
 
         training_data = []
         for (state, pi, player) in training_examples:
@@ -589,13 +728,31 @@ class BulletChessAlphaZeroTrainer:
         return training_data, result, reason, current_player
 
     def add_to_buffer(self, data):
+        """        Add training data to replay buffer, maintaining maximum size.
+        Args:
+            data (List[Tuple]): List of training examples to add to buffer.
+        
+        Adds new training examples to the replay buffer.
+        If the buffer exceeds the maximum size, it removes the oldest examples.
+        Features:
+            - Efficient storage of training data for later use
+            - Maintains a fixed-size buffer to prevent memory overflow
+            - Automatically manages buffer size by removing oldest entries
+        """
         self.replay_buffer.extend(data)
         if len(self.replay_buffer) > self.max_buffer_size:
             excess = len(self.replay_buffer) - self.max_buffer_size
             self.replay_buffer = self.replay_buffer[excess:]
 
     def train_network(self):
-        """Train the neural network on a batch from replay buffer."""
+        """Train the neural network on a batch from replay buffer.
+        Samples a random batch from the replay buffer and trains the agent's neural network.
+        Returns:
+            loss (float): Training loss value from the agent's training step.
+        Features:
+            - Random sampling from replay buffer for training stability
+            - Supports prioritized experience replay if configured
+        """
         import random
         if len(self.replay_buffer) < self.batch_size:
             return None
@@ -604,7 +761,7 @@ class BulletChessAlphaZeroTrainer:
         states, pis, values = zip(*batch)
 
         examples = list(zip(states, pis, values))
-        loss = self.agent.train_step(examples, optimizer=self.optimizer, epochs=self.epochs)
+        loss = self.agent.train_step(examples, epochs=self.epochs)
 
         return loss
 
@@ -681,59 +838,125 @@ class BulletChessAlphaZeroTrainer:
                          f"len:{np.mean(lens):.1f}")
         return wr_all, wr_true
 
-    def train(self):
+    def train(self, type: str = "episodes"):
+        """
+        Main training loop with curriculum learning and evaluation
+        Runs the complete training process for the AlphaZero-style agent.
+        Features:
+            - Progressive opponent strength curriculum
+            - Regular evaluation against stronger opponents
+            - Best model tracking and checkpointing
+            - Comprehensive logging of training progress
+        """
         episodes = self.cfg["training"]["episodes"]
+        overall_time = self.cfg["training"]["overall_time"]
         warmup = self.cfg["training"]["warmup"]
         log_freq = self.cfg["training"]["log_freq"]
         eval_freq = self.cfg["training"]["eval_freq"]
         save_freq = self.cfg["training"]["save_freq"]
 
-        losses = deque(maxlen=200)
+        
 
-        for ep in range(1, episodes + 1):
-            res = self.play_one(is_training=True, episode_idx=ep, total_episodes=episodes)
+        if type == "episodes":
+            for ep in range(1, episodes + 1):
+                res = self.play_one(is_training=True, episode_idx=ep, total_episodes=episodes)
 
-            # Training
-            loss_val = 0.0
-            if ep >= warmup:
-                loss_val = self.train_network()
-                if loss_val:
-                    losses.append(loss_val)
+                # Training
+                loss_val = 0.0
+                if ep >= warmup:
+                    loss_val = self.train_network()
+                    if loss_val:
+                        self.losses.append(loss_val)
 
-            # Stats
-            total_games = self.stats["wins"] + self.stats["losses"] + self.stats["draws"]
-            wr_all = self.stats["wins"] / max(1, total_games)
-            wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))
+                # Stats
+                total_games = self.stats["wins"] + self.stats["losses"] + self.stats["draws"]
+                wr_all = self.stats["wins"] / max(1, total_games)
+                wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))
 
-            # Logging
-            if ep % log_freq == 0 or ep == 1:
-                opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, episodes)
-                ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
-                self.logger.info(
-                    f"Ep {ep}/{episodes} | {res['outcome']:4s} | "
-                    f"R:{res['reward']:6.2f} | M:{res['steps']:3d} | "
-                    f"WR_all:{wr_all:.3f} | WR_true:{wr_true:.3f} | "
-                    f"L:{(np.mean(losses) if losses else 0):.4f} | "
-                    f"Ww:{self.stats['wins_white']} Wb:{self.stats['wins_black']} "
-                    f"Lw:{self.stats['losses_white']} Lb:{self.stats['losses_black']} | "
-                    f"opp_str:{opp_strength:.3f} | move_limit_rate:{ml_rate:.3f}"
-                )
+                # Logging
+                if ep % log_freq == 0 or ep == 1:
+                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, episodes)
+                    ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
+                    self.logger.info(
+                        f"Ep {ep}/{episodes} | {res['outcome']:4s} | "
+                        f"R:{res['reward']:6.2f} | M:{res['steps']:3d} | "
+                        f"WR_all:{wr_all:.3f} | WR_true:{wr_true:.3f} | "
+                        f"L:{(np.mean(self.losses) if self.losses else 0):.4f} | "
+                        f"Ww:{self.stats['wins_white']} Wb:{self.stats['wins_black']} "
+                        f"Lw:{self.stats['losses_white']} Lb:{self.stats['losses_black']} | "
+                        f"opp_str:{opp_strength:.3f} | move_limit_rate:{ml_rate:.3f}"
+                    )
 
-            # Evaluation
-            if ep % eval_freq == 0:
-                eval_strength = min(0.25, opp_strength + 0.05)
-                wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, episodes, eval_strength)
-                if wr > self.best_win_rate:
-                    self.best_win_rate = wr
-                    best_path = os.path.join(self.cfg["paths"]["models_mcts"], f"best_alphazero_ep{ep}.pth")
-                    self.agent.save(best_path)
-                    self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
+                # Evaluation
+                if ep % eval_freq == 0:
+                    eval_strength = min(0.25, opp_strength + 0.05)
+                    wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, episodes, eval_strength)
+                    if wr > self.best_win_rate:
+                        self.best_win_rate = wr
+                        best_path = os.path.join(self.cfg["paths"]["models_mcts"], f"best_alphazero_ep{ep}.pth")
+                        self.agent.save(best_path)
+                        self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
 
-            # Checkpoint
-            if ep % save_freq == 0:
-                ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"ckpt_alphazero_ep{ep}.pth")
-                self.agent.save(ckpt_path)
-                self.logger.info(f"Checkpoint saved -> {ckpt_path}")
+                # Checkpoint
+                if ep % save_freq == 0:
+                    ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"ckpt_alphazero_ep{ep}.pth")
+                    self.agent.save(ckpt_path)
+                    self.logger.info(f"Checkpoint saved -> {ckpt_path}")
+        
+        elif type == "time":
+            end_time = time.time() + overall_time
+            ep = 0
+            warmup = self.cfg["training"]["warmup"]
+            log_freq = self.cfg["training"]["log_freq"]
+            eval_freq = self.cfg["training"]["eval_freq"]
+            save_freq = self.cfg["training"]["save_freq"]
+
+            while time.time() <= end_time:
+                res = self.play_one(is_training=True, episode_idx=ep, total_episodes=0)
+
+                # Training
+                loss_val = 0.0
+                if len(self.replay_buffer) >= warmup:
+                    loss_val = self.train_network()
+                    if loss_val:
+                        self.losses.append(loss_val)
+
+                # Stats
+                total_games = self.stats["wins"] + self.stats["losses"] + self.stats["draws"]
+                wr_all = self.stats["wins"] / max(1, total_games)
+                wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))
+
+                # Logging
+                if ep % log_freq == 0 or ep == 0:
+                    current_time = time.time() - (end_time - overall_time)
+                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, overall_time)
+                    ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
+                    self.logger.info(
+                        f"Time {current_time:.2f}/{overall_time:.2f} | {res['outcome']:4s} | "
+                        f"R:{res['reward']:6.2f} | M:{res['steps']:3d} | "
+                        f"WR_all:{wr_all:.3f} | WR_true:{wr_true:.3f} | "
+                        f"L:{(np.mean(self.losses) if self.losses else 0):.4f} | "
+                        f"Ww:{self.stats['wins_white']} Wb:{self.stats['wins_black']} "
+                        f"Lw:{self.stats['losses_white']} Lb:{self.stats['losses_black']} | "
+                        f"opp_str:{opp_strength:.3f} | move_limit_rate:{ml_rate:.3f}"
+                    )
+
+                # Evaluation
+                if ep % eval_freq == 0:
+                    eval_strength = min(0.25, opp_strength + 0.05)
+                    wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, overall_time, eval_strength)
+                    if wr > self.best_win_rate:
+                        self.best_win_rate = wr
+                        best_path = os.path.join(self.cfg["paths"]["models_mcts"], f"best_alphazero_time{ep}.pth")
+                        self.agent.save(best_path)
+
+                # Checkpoint
+                if ep % save_freq == 0:
+                    ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"ckpt_time_ep{ep}.pth")
+                    self.agent.save(ckpt_path)
+
+                ep += 1
+
 
         self.logger.info("=== FINAL EVALUATION ===")
         for strength in [0.1, 0.15, 0.2, 0.25, 0.3]:
@@ -742,6 +965,16 @@ class BulletChessAlphaZeroTrainer:
 
 
     def play_one(self, is_training=True, episode_idx=0, total_episodes=0, force_eval_strength=None):
+        """
+        Play one complete game between agent and opponent
+        Args:
+            is_training: Whether to collect training data
+            episode_idx: Current episode number for curriculum
+            total_episodes: Total episodes for curriculum scheduling
+            force_eval_strength: Override opponent strength for evaluation
+        Returns:
+            Game result dictionary with statistics
+        """
         training_data, result, reason, agent_white = self.self_play_game()
 
         if is_training:
@@ -758,7 +991,20 @@ class BulletChessAlphaZeroTrainer:
 
 
     def _map_reason(self, reason: str) -> str:
-        """Map detailed termination reasons to categories"""
+        """
+        Map detailed termination reasons to categories
+        Args:
+            reason (str): Detailed reason for game end (e.g. 'checkmate', 'time_flag', etc.)
+        Returns:
+            str: Mapped category for the termination reason
+        Maps specific game end reasons to broader categories for easier tracking.
+        Categories include:
+            - mate
+            - time_flag
+            - draw
+            - illegal
+            - timeout_or_resignation
+        """
         if "checkmate" in reason:
             return "mate"
         if "time_flag" in reason:
@@ -772,6 +1018,25 @@ class BulletChessAlphaZeroTrainer:
         return reason
 
     def finalize_episode(self, result, reason, steps, agent_white):
+        """
+        Finalize the episode and update statistics
+        Args:
+            result (int): Game result from agent's perspective (1 for win, -1 for loss, 0 for draw)
+            reason (str): Reason for game end
+            steps (int): Number of moves played in the game
+            agent_white (bool): Whether the agent played as white
+        Returns:
+            dict: Summary of the episode with statistics
+        
+        Finalizes the episode by logging the result, updating statistics,
+        and saving the model if necessary.
+        Features:
+            - Logs the game result and reason
+            - Updates win/loss/draw statistics
+            - Tracks wins/losses by color
+            - Saves model checkpoint at specified intervals
+            - Returns a summary dictionary with episode details
+        """
         mapped = self._map_reason(reason)
 
         self.logger.info(f"Ep {self.stats['games_played'] + 1} result: {result}, reason: {mapped}")
@@ -811,4 +1076,19 @@ class BulletChessAlphaZeroTrainer:
             "ended_by": reason
         }
 
+    def get_losses(self) -> Dict[int, float]:
+        """
+        Get training losses recorded during training
+        Returns:
+            List of losses recorded during training
+        """
+        return self.losses
+    
+    def get_ended_by(self) -> Dict[str, int]:
+        """
+        Get reasons for game endings
+        Returns:
+            Counter mapping reason to count
+        """
+        return dict(self.ended_by)
 

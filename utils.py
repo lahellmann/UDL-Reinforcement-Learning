@@ -101,7 +101,8 @@ def get_truly_fixed_cfg():
             "log_freq": 50,        # Logging frequency
             "eval_freq": 150,      # Evaluation frequency
             "eval_games": 30,      # Games per evaluation
-            "save_freq": 300       # Model saving frequency
+            "save_freq": 300,       # Model saving frequency
+            'overall_time': 60 * 60,  # Total training time in seconds
         },
         "opponent": {
             "strength_start": 0.0, # Initial opponent strength

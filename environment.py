@@ -40,7 +40,6 @@ class BulletChessEnv:
         self.simulate_think = simulate_think
         self.think_lo = think_lo
         self.think_hi = think_hi
-        self.last_done_reason = None
 
 
         # Standard chess piece values for reward calculation
@@ -74,7 +73,6 @@ class BulletChessEnv:
             observation, reward, done, info
         """
         if self.is_game_over():
-            self.last_done_reason = "game_already_over"
             return self.get_observation(), 0.0, True, {"reason": "game_already_over"}
 
         old_board = self.state.board.copy()
@@ -96,7 +94,6 @@ class BulletChessEnv:
         # Check for time flag
         if remaining <= 0:
             reward = -20.0 if self.state.board.turn else 20.0
-            self.last_done_reason = "time_flag"
             return self.get_observation(), reward, True, {"reason": "time_flag"}
 
         # Convert action to chess move
@@ -106,12 +103,11 @@ class BulletChessEnv:
             try:
                 move = chess.Move.from_uci(action)
             except Exception:
-                self.last_done_reason = "invalid_uci"
                 return self.get_observation(), -10.0, True, {"reason": "invalid_uci"}
 
         # Validate move legality
         if move not in self.state.board.legal_moves:
-            self.last_done_reason = "illegal_move"
+            return self.get_observation(), -10.0, True, {"reason": "illegal_move"}
             return self.get_observation(), -10.0, True, {"reason": "illegal_move"}
 
         # Execute move
@@ -258,14 +254,11 @@ class BulletChessEnv:
                     chess.Termination.FIFTY_MOVES,
                     chess.Termination.THREEFOLD_REPETITION
                 }:
-                    self.last_done_reason = "draw"
                     return 0.0, True, {"reason": "draw", "type": outcome.termination.name}
                 else:
                     reward = 15.0 if outcome.winner else -15.0
-                    self.last_done_reason = "timeout_or_resignation"
                     return reward, True, {"reason": "timeout_or_resignation",
                                           "winner": "white" if outcome.winner else "black"}
-            self.last_done_reason = "unknown_game_over"
             return 0.0, True, {"reason": "unknown_game_over"}
 
         # Calculate step reward
@@ -278,11 +271,7 @@ class BulletChessEnv:
             r -= 0.01
 
         r = float(np.clip(r, -2.0, 2.0))
-        self.last_done_reason = "continue"
         return r, False, {"reason": "continue", "material": r}
-    
-    def get_termination_reason(self):
-        return self.last_done_reason
     
     def get_move_count(self) -> int:
         """Get the current move count in the game"""
