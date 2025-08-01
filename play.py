@@ -339,7 +339,7 @@ import ipywidgets as widgets
 from IPython.display import display, clear_output
 import os
 
-def select_agents(models_dir="models_ddqn_truly_fixed"):
+def select_agents(models_dir="models"):
     import utils
     from ddqn_agent import load_agent_from_path
     import os

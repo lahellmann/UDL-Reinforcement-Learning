@@ -1101,7 +1101,7 @@ class BulletChessAlphaZeroTrainer:
         
         log_path = os.path.join(
             self.cfg["paths"]["mcts_logs"],
-            f"Policy_Value_{self.current_training_type}_{episodes}_mcts_{self.cfg["mcts"]["mcts_simulations"]}.json"
+            f"Policy_Value_{self.current_training_type}_{episodes}_mcts_{self.cfg['mcts']['mcts_simulations']}.json"
         )
         with open(log_path, "w") as f:
             json.dump(self.training_log, f, indent=2)
