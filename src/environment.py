@@ -239,7 +239,7 @@ class BulletChessEnv:
             outcome = board.outcome(claim_draw=True)
             if outcome is not None:
                 if outcome.termination == chess.Termination.CHECKMATE:
-                    reward = 15.0 if outcome.winner else -15.0
+                    reward = 1.0 if outcome.winner else -1.0
                     return reward, True, {"reason": "checkmate", "winner": "white" if outcome.winner else "black"}
                 elif outcome.termination in {
                     chess.Termination.STALEMATE,
@@ -251,7 +251,7 @@ class BulletChessEnv:
                 }:
                     return 0.0, True, {"reason": "draw", "type": outcome.termination.name}
                 else:
-                    reward = 15.0 if outcome.winner else -15.0
+                    reward = 1.0 if outcome.winner else -1.0
                     return reward, True, {"reason": "timeout_or_resignation",
                                           "winner": "white" if outcome.winner else "black"}
             return 0.0, True, {"reason": "unknown_game_over"}

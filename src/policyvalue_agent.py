@@ -63,7 +63,7 @@ class MCTSNode:
 
 
 class MCTS:
-    def __init__(self, model, env, n_simulations=800, c_puct=1.5, device=None):
+    def __init__(self, model, env: BulletChessEnv, n_simulations=800, c_puct=1.5, device=None):
         self.model = model
         self.env = env
         self.n_simulations = n_simulations
@@ -117,14 +117,22 @@ class MCTS:
             print("WARNING: visit_counts all zero. Using uniform policy.")
             for a in legal_actions:
                 pi[a] = 1.0
-            pi /= pi.sum()
         else:
             normed = visit_counts / visit_counts.sum()
             for i, a in enumerate(legal_actions):
                 pi[a] = normed[i]
 
+        pi_sum = pi.sum()
+        if pi_sum == 0.0:
+            print(f"WARNING: pi is zero vector. Using uniform policy.")
+            for a in legal_actions:
+                pi[a] = 1.0
+            pi_sum = pi.sum()
+
+        pi /= pi_sum
+
         assert not np.isnan(pi).any(), "pi contains NaNs!"
-        assert abs(torch.tensor(pi).sum() - 1.0) < 1e-5, f"pi does not sum to 1: {pi.sum()}"
+        assert abs(pi.sum() - 1.0) < 1e-5, f"pi does not sum to 1: {pi.sum()}"
 
         return pi
 
@@ -203,11 +211,25 @@ class MCTSAgent:
         using a softmax distribution adjusted by the temperature.
         The higher the temperature, the more uniform the action selection becomes.
         """
+        temperature = self.cfg["mcts"]["temperature"]
+        legal_actions = self.env.get_legal_actions()
+
+        pi_filtered = np.array([pi[a] for a in legal_actions])
+        
+        if pi_filtered.sum() == 0:
+            print("WARNING: Filtered π is zero vector. Sampling uniformly from legal actions.")
+            probs = np.ones(len(legal_actions)) / len(legal_actions)
+        else:
+            probs = pi_filtered / pi_filtered.sum()
+
         if temperature == 0:
-            return int(np.argmax(pi))
-        pi = np.asarray(pi) ** (1 / temperature)
-        pi = pi / np.sum(pi)
-        return int(np.random.choice(len(pi), p=pi))
+            best_index = np.argmax(probs)
+            action = legal_actions[best_index]
+        else:
+            action = np.random.choice(legal_actions, p=probs)
+
+        assert action in legal_actions, f"Selected illegal action: {action}"
+        return action
 
     def run_mcts(self, env):
         """
@@ -261,7 +283,7 @@ class MCTSAgent:
 
             states = np.array(states)
             policies = np.array(policies)
-            values = np.array(values)
+            values = np.array([np.sign(v) for v in values])  # normalize target
 
             states = torch.tensor(states, dtype=torch.float32, device=self.device)
             states = states.permute(0, 3, 1, 2).contiguous()
@@ -270,9 +292,11 @@ class MCTSAgent:
 
             pred_policy, pred_value = self.model(states)
 
-            # Policy loss: cross-entropy between MCTS probs and predicted policy
-            policy_loss = -torch.sum(policies * torch.log(pred_policy + 1e-8), dim=1).mean()
-            # Value loss: MSE between predicted and actual game outcome
+            # Correct policy loss (KL divergence-style)
+            log_probs = F.log_softmax(pred_policy, dim=1)
+            policy_loss = -torch.sum(policies * log_probs, dim=1).mean()
+
+            # Correct MSE value loss with normalized target
             value_loss = F.mse_loss(pred_value.squeeze(), values)
             loss = policy_loss + value_loss
 

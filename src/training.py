@@ -1096,7 +1096,7 @@ class BulletChessAlphaZeroTrainer:
 
                 # Checkpoint
                 if ep % save_freq == 0:
-                    ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"_{self.current_training_type}_",f"ckpt_time_ep{ep}.pth")
+                    ckpt_path = os.path.join(self.cfg["paths"]["models"], f"_{self.current_training_type}_",f"ckpt_time_ep{ep}.pth")
                     self.agent.save(ckpt_path)
 
                 ep += 1

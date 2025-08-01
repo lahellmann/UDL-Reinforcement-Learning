@@ -142,7 +142,8 @@ def get_truly_fixed_cfg():
         },
         "mcts": {
             "mcts_simulations": 10,
-            "c_puct": 1.5
+            "c_puct": 1.5,
+            "temperature": 1.0
         }
     }
 
