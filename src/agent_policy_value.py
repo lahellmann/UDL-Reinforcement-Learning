@@ -70,11 +70,13 @@ class ChessPolicyValueNetwork(nn.Module):
         )
 
     def _make_res_block(self, channels):
-        """Create a residual block.
+        """
+        Create a residual block.
         Args:
             channels (int): Number of input/output channels for the block.
         Returns:
-            nn.Sequential: A sequential block containing two convolutional layers with batch normalization and ReLU activation"""
+            nn.Sequential: A sequential block containing two convolutional layers with batch normalization and ReLU activation
+        """
         return nn.Sequential(
             nn.Conv2d(channels, channels, kernel_size=3, padding=1),  # First conv in residual block
             nn.BatchNorm2d(channels),  # Batch normalization
