@@ -46,24 +46,7 @@ class BulletChessDDQNTrainer:
         self.env = env
        
         # Initialize agent
-        self.agent = DDQNAgent(
-            lr=cfg["agent"]["lr"],
-            gamma=cfg["agent"]["gamma"],
-            epsilon_start=cfg["agent"]["epsilon_start"],
-            epsilon_end=cfg["agent"]["epsilon_end"],
-            epsilon_decay=cfg["agent"]["epsilon_decay"],
-            batch_size=cfg["agent"]["batch_size"],
-            target_update=cfg["agent"]["target_update"],
-            tau=cfg["agent"]["tau"],
-            use_soft_update=cfg["agent"]["use_soft_update"],
-            n_actions=4096,
-            per_alpha=cfg["replay"]["per_alpha"],
-            per_beta_start=cfg["replay"]["per_beta_start"],
-            per_beta_frames=cfg["replay"]["per_beta_frames"],
-            n_step=cfg["agent"]["n_step"],
-            dropout=cfg["agent"]["dropout"],
-            noise_std=cfg["agent"]["noise_std"]
-        )
+        self.agent = DDQNAgent(cfg, env)
 
         self.setup_logging()
         self.training_log = {}
@@ -94,7 +77,7 @@ class BulletChessDDQNTrainer:
             logger (logging.Logger): Configured logger instance.
         """
         os.makedirs(self.cfg["paths"]["models"], exist_ok=True)
-        #os.makedirs(self.cfg["paths"]["ddqn_logs"], exist_ok=True)
+        os.makedirs(self.cfg["paths"]["ddqn_logs"], exist_ok=True)
 
         model_name = "DDQN"
         episodes = self.cfg["training"]["episodes"]

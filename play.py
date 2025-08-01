@@ -368,12 +368,12 @@ def select_agents(models_dir="models"):
             if selected_white in ["Player", "None", None]:
                 white_agent = None
             else:
-                white_agent = load_agent_from_path(f"{models_dir}/{selected_white}", cfg)
+                white_agent = load_agent_from_path(f"{models_dir}/{selected_white}", cfg, env)
 
             if selected_black in ["Player", "None", None]:
                 black_agent = None
             else:
-                black_agent = load_agent_from_path(f"{models_dir}/{selected_black}", cfg)
+                black_agent = load_agent_from_path(f"{models_dir}/{selected_black}", cfg, env)
 
             env.reset()
             start_game()

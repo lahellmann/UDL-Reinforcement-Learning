@@ -10,8 +10,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 import utils
+from environment import BulletChessEnv
 
-def load_agent_from_path(path, cfg):
+def load_agent_from_path(path, cfg, env):
     """
     Load a DDQN agent from a specified file path.
 
@@ -22,24 +23,7 @@ def load_agent_from_path(path, cfg):
     Returns:
         DDQNAgent: The loaded DDQN agent.
     """
-    agent = DDQNAgent(
-        lr=cfg["agent"]["lr"],
-        gamma=cfg["agent"]["gamma"],
-        epsilon_start=cfg["agent"]["epsilon_start"],
-        epsilon_end=cfg["agent"]["epsilon_end"],
-        epsilon_decay=cfg["agent"]["epsilon_decay"],
-        batch_size=cfg["agent"]["batch_size"],
-        target_update=cfg["agent"]["target_update"],
-        tau=cfg["agent"]["tau"],
-        use_soft_update=cfg["agent"]["use_soft_update"],
-        n_actions=4096,
-        per_alpha=cfg["replay"]["per_alpha"],
-        per_beta_start=cfg["replay"]["per_beta_start"],
-        per_beta_frames=cfg["replay"]["per_beta_frames"],
-        n_step=cfg["agent"]["n_step"],
-        dropout=cfg["agent"]["dropout"],
-        noise_std=cfg["agent"]["noise_std"]
-    )
+    agent = DDQNAgent( cfg, env)
     agent.load(path)
     return agent
 
@@ -270,56 +254,39 @@ class DDQNAgent:
     - Action masking for legal move enforcement
     """
 
-    def __init__(self,
-                 lr=1e-4,
-                 gamma=0.99,
-                 epsilon_start=1.0,
-                 epsilon_end=0.05,
-                 epsilon_decay=0.9996,
-                 batch_size=64,
-                 target_update=2000,
-                 tau: float = 0.002,
-                 use_soft_update: bool = True,
-                 n_actions: int = 4096,
-                 per_alpha: float = 0.6,
-                 per_beta_start: float = 0.4,
-                 per_beta_frames: int = 1_000_000,
-                 n_step: int = 3,
-                 dropout: float = 0.1,
-                 noise_std: float = 0.01,
-                 device=None):
+    def __init__(self, cfg: dict, env: BulletChessEnv, device=None):
 
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Initialize networks
-        self.q = DuelingQNet(n_actions=n_actions, dropout=dropout).to(self.device)
-        self.q_target = DuelingQNet(n_actions=n_actions, dropout=dropout).to(self.device)
+        self.q = DuelingQNet(n_actions=cfg["agent"]["n_actions"], dropout=cfg["agent"]["dropout"]).to(self.device)
+        self.q_target = DuelingQNet(n_actions=cfg["agent"]["n_actions"], dropout=cfg["agent"]["dropout"]).to(self.device)
         self.q_target.load_state_dict(self.q.state_dict())
 
         # Optimizer with weight decay for regularization
-        self.optim = optim.Adam(self.q.parameters(), lr=lr, weight_decay=1e-5)
-        self.gamma = gamma
+        self.optim = optim.Adam(self.q.parameters(), lr=cfg["agent"]["lr"], weight_decay=1e-5)
+        self.gamma = cfg["agent"]["gamma"]
 
         # Exploration parameters
-        self.eps = epsilon_start
-        self.eps_end = epsilon_end
-        self.eps_decay = epsilon_decay
+        self.eps = cfg["agent"]["epsilon_start"]
+        self.eps_end = cfg["agent"]["epsilon_end"]
+        self.eps_decay = cfg["agent"]["epsilon_decay"]
 
         # Training parameters
-        self.batch_size = batch_size
-        self.target_update = target_update
+        self.batch_size = cfg["agent"]["batch_size"]
+        self.target_update = cfg["agent"]["target_update"]
         self.steps = 0
-        self.n_actions = n_actions
-        self.tau = tau
-        self.use_soft_update = use_soft_update
-        self.noise_std = noise_std
+        self.n_actions = cfg["agent"]["n_actions"]
+        self.tau = cfg["agent"]["tau"]
+        self.use_soft_update = cfg["agent"]["use_soft_update"]
+        self.noise_std = cfg["agent"]["noise_std"]
 
         # Experience replay components
-        self.per_buffer = PERBuffer(capacity=100000, n_actions=n_actions,
-                                    alpha=per_alpha, beta_start=per_beta_start,
-                                    beta_frames=per_beta_frames)
-        self.n_step = n_step
-        self.nstep_buffer = NStepBuffer(n=n_step, gamma=gamma)
+        self.per_buffer = PERBuffer(capacity=100000, n_actions=cfg["agent"]["n_actions"],
+                                    alpha=cfg["agent"]["per_alpha"], beta_start=cfg["agent"]["per_beta_start"],
+                                    beta_frames=cfg["agent"]["per_beta_frames"])
+        self.n_step = cfg["agent"]["n_step"]
+        self.nstep_buffer = NStepBuffer(n=cfg["agent"]["n_step"], gamma=cfg["agent"]["gamma"])
 
     def select_action(self, state: np.ndarray, legal_actions: List[int], eval_mode: bool = False) -> int:
         """
