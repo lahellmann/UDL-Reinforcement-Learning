@@ -108,18 +108,23 @@ class MCTS:
                 backup.value_sum += value.item()
                 backup = backup.parent
 
-        # Final action distribution π
-        visit_counts = np.array([root.children[a].visit_count if a in root.children else 0 for a in range(4096)])
+        # ← THIS BLOCK IS NOW CORRECTLY INDENTED INSIDE `run`
+        pi = np.zeros(4096)
+        legal_actions = self.env.get_legal_actions()
+        visit_counts = np.array([root.children[a].visit_count if a in root.children else 0 for a in legal_actions])
+
         if visit_counts.sum() == 0:
-            # All visits 0 → fallback to uniform legal actions
-            pi = np.zeros_like(visit_counts)
-            for a in self.env.get_legal_actions():
-                pi[a] = 1
-            pi /= pi.sum()
+            print("WARNING: visit_counts all zero. Using uniform policy.")
+            pi[legal_actions] = 1.0
+            pi /= pi.sum()  # Now this will always normalize correctly
         else:
-            pi = visit_counts / visit_counts.sum()
-        
-        self.pi = pi
+            normed = visit_counts / visit_counts.sum()
+            for i, a in enumerate(legal_actions):
+                pi[a] = normed[i]
+
+        assert not np.isnan(pi).any(), "pi contains NaNs!"
+        assert abs(torch.tensor(pi).sum() - 1.0) < 1e-5, f"pi does not sum to 1: {pi.sum()}"
+
         return pi
 
 
@@ -231,9 +236,7 @@ class MCTSAgent:
             c_puct = self.cfg["mcts"]["c_puct"],
             device=self.device
         )
-        pi = mcts.run()
-        self.pi = pi
-        return pi
+        return mcts.run()
 
 
     def train_step(self, examples, epochs=1):
@@ -261,7 +264,11 @@ class MCTSAgent:
         for _ in range(epochs):
             states, policies, values = zip(*examples)
 
-            states = torch.tensor(states, dtype=torch.float32, device=self.device)  # shape: (B, 8, 8, 15)
+            states = np.array(states)
+            policies = np.array(policies)
+            values = np.array(values)
+
+            states = torch.tensor(states, dtype=torch.float32, device=self.device)
             states = states.permute(0, 3, 1, 2).contiguous()
             policies = torch.tensor(policies, dtype=torch.float32, device=self.device)
             values = torch.tensor(values, dtype=torch.float32, device=self.device)
