@@ -108,15 +108,16 @@ class MCTS:
                 backup.value_sum += value.item()
                 backup = backup.parent
 
-        # ← THIS BLOCK IS NOW CORRECTLY INDENTED INSIDE `run`
+        # Collect visit counts for the root node's children
         pi = np.zeros(4096)
         legal_actions = self.env.get_legal_actions()
         visit_counts = np.array([root.children[a].visit_count if a in root.children else 0 for a in legal_actions])
 
         if visit_counts.sum() == 0:
             print("WARNING: visit_counts all zero. Using uniform policy.")
-            pi[legal_actions] = 1.0
-            pi /= pi.sum()  # Now this will always normalize correctly
+            for a in legal_actions:
+                pi[a] = 1.0
+            pi /= pi.sum()
         else:
             normed = visit_counts / visit_counts.sum()
             for i, a in enumerate(legal_actions):
@@ -126,6 +127,7 @@ class MCTS:
         assert abs(torch.tensor(pi).sum() - 1.0) < 1e-5, f"pi does not sum to 1: {pi.sum()}"
 
         return pi
+
 
 
 class MCTSAgent:

@@ -13,7 +13,7 @@ import utils
 
 from environment import BulletChessEnv
 from ddqn_agent import DDQNAgent
-from policyvalue_agent_1 import MCTSAgent
+from policyvalue_agent import MCTSAgent
 
 
 class BulletChessDDQNTrainer:
