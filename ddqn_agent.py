@@ -12,7 +12,7 @@ import torch.optim as optim
 import utils
 from environment import BulletChessEnv
 
-def load_agent_from_path(path, cfg, env):
+def load_ddqn_from_path(path, cfg, env):
     """
     Load a DDQN agent from a specified file path.
 

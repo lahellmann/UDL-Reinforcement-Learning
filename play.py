@@ -3,10 +3,12 @@ from IPython.display import display, clear_output
 import chess
 import threading
 import time
+import torch
 import utils
 from environment import BulletChessEnv
-from ddqn_agent import load_agent_from_path
-from policyvalue_agent import load_agent_from_path
+from ddqn_agent import load_ddqn_from_path , DDQNAgent
+from policyvalue_agent import load_mcts_from_path , MCTSAgent
+
 
 
 
@@ -65,7 +67,6 @@ restart_button.on_click(on_restart_clicked)
 cancel_button.on_click(on_cancel_clicked)
 
 board = env.state.board
-
 
 
 def square_color(square):
@@ -383,15 +384,23 @@ def select_agents(models_dir="models"):
 
             cfg = utils.get_truly_fixed_cfg()
 
+            
             if selected_white in ["Player", "None", None]:
                 white_agent = None
             else:
-                white_agent = load_agent_from_path(f"{models_dir}/{selected_white}", cfg, env)
+                if selected_white.startswith("ckpt_ddqn") and selected_white.endswith(".pth"):
+                    white_agent = load_ddqn_from_path(f"{models_dir}/{selected_white}", cfg, env)
+                else:
+                    white_agent = load_mcts_from_path(f"{models_dir}/{selected_white}", cfg, env)
+                #white_agent = load_agent_from_path(f"{models_dir}/{selected_white}", cfg, env)
 
             if selected_black in ["Player", "None", None]:
                 black_agent = None
             else:
-                black_agent = load_agent_from_path(f"{models_dir}/{selected_black}", cfg, env)
+                if selected_black.startswith("ckpt_ddqn") and selected_black.endswith(".pth"):
+                    black_agent = load_ddqn_from_path(f"{models_dir}/{selected_black}", cfg, env)
+                else:
+                    black_agent = load_mcts_from_path(f"{models_dir}/{selected_black}", cfg, env)
 
             env.reset()
             start_game()
@@ -415,3 +424,6 @@ def select_agents(models_dir="models"):
         widgets.HBox([restart_button, cancel_button]),
         output
     ]))
+
+
+

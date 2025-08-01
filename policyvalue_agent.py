@@ -312,7 +312,7 @@ class MCTSAgent:
         return getattr(self, "pi", None)
 
 
-def load_agent_from_path(path, cfg, env):
+def load_mcts_from_path(path, cfg, env):
     agent = MCTSAgent(cfg, env)
     agent.load(path)
     return agent
