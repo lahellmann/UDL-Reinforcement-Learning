@@ -1,4 +1,3 @@
-### Policy Methods ###
 import logging
 import math
 from typing import List, Tuple, Dict, Union
@@ -13,12 +12,16 @@ import chess
 from utils import get_time_pressure_level, generate_all_possible_uci_moves
 
 
-### Policy Methods ###
-
 class ChessPolicyValueNetwork(nn.Module):
     """Combined policy and value network for AlphaZero-style training."""
 
     def __init__(self, input_channels: int = 15, hidden_dim: int = 256):
+        """
+        Initialize the ChessPolicyValueNetwork.
+        Args:
+            input_channels (int): Number of input channels (default 15 for chessboard representation).
+            hidden_dim (int): Dimension of the hidden layer in the value head.
+        """
         super().__init__()
 
         # Shared convolutional backbone
@@ -67,7 +70,11 @@ class ChessPolicyValueNetwork(nn.Module):
         )
 
     def _make_res_block(self, channels):
-        """Create a residual block."""
+        """Create a residual block.
+        Args:
+            channels (int): Number of input/output channels for the block.
+        Returns:
+            nn.Sequential: A sequential block containing two convolutional layers with batch normalization and ReLU activation"""
         return nn.Sequential(
             nn.Conv2d(channels, channels, kernel_size=3, padding=1),  # First conv in residual block
             nn.BatchNorm2d(channels),  # Batch normalization
@@ -110,6 +117,14 @@ class MCTSNode:
     """Node in the Monte Carlo Tree Search."""
 
     def __init__(self, state, parent=None, action=None, prior=0.0):
+        """
+        Initialize a MCTS node.
+        Args:
+            state: Current game state at this node.
+            parent: Parent node in the MCTS tree (None for root).
+            action: Action taken to reach this node from parent (None for root).
+            prior: Prior probability from neural network policy (default 0.0).
+        """
         self.state = state  # Game state at this node
         self.parent = parent  # Parent node in the tree
         self.action = action  # Action that led to this node from parent
@@ -121,16 +136,28 @@ class MCTSNode:
         self.is_expanded = False  # Whether this node has been expanded with children
 
     def is_leaf(self) -> bool:
+        """Check if this node is a leaf (no children).
+        Returns:
+            bool: True if node is a leaf (not expanded), False otherwise.
+        """
         return not self.is_expanded  # Node is leaf if it hasn't been expanded yet
 
     def value(self) -> float:
-        """Average value of this node."""
+        """Average value of this node.
+        Returns:
+            float: Average value of this node based on visit counts.
+        """
         if self.visit_count == 0:
             return 0.0  # No visits yet, return neutral value
         return self.value_sum / self.visit_count  # Return average value
 
     def ucb_score(self, c_puct: float = 1.0) -> float:
-        """Upper Confidence Bound score for node selection."""
+        """Upper Confidence Bound score for node selection.
+        Args:
+            c_puct (float): Exploration constant for UCB (default 1.0).
+        Returns:
+            float: UCB score combining exploitation and exploration.
+        """
         if self.visit_count == 0:
             return float('inf')  # Unvisited nodes have infinite score (will be selected first)
 
@@ -141,11 +168,21 @@ class MCTSNode:
         return exploitation + exploration  # Combined UCB score
 
     def select_child(self, c_puct: float = 1.0) -> 'MCTSNode':
-        """Select child with highest UCB score."""
+        """Select child with highest UCB score.
+        Args:
+            c_puct (float): Exploration constant for UCB (default 1.0).
+        Returns:
+            MCTSNode: Child node with highest UCB score.
+        """
         return max(self.children.values(), key=lambda child: child.ucb_score(c_puct))
 
     def expand(self, policy_probs: np.ndarray, legal_actions: List[int], game_env):
-        """Expand node with children for legal actions."""
+        """Expand node with children for legal actions.
+        Args:
+            policy_probs (np.ndarray): Prior probabilities for each action from neural network.
+            legal_actions (List[int]): List of legal actions for the current state.
+            game_env: Current game environment.
+        """
         self.is_expanded = True  # Mark node as expanded
 
         for action in legal_actions:
@@ -164,7 +201,10 @@ class MCTSNode:
             )
 
     def backup(self, value: float):
-        """Backup value through the tree."""
+        """Backup value through the tree.
+        Args:
+            value (float): Value to backup through the tree.
+        """
         self.visit_count += 1  # Increment visit count
         self.value_sum += value  # Add value to sum
 
@@ -216,7 +256,13 @@ class AdaptiveMCTS:
         return action_probs
 
     def _simulate(self, root: MCTSNode, legal_actions: List[int], game_env):
-        """Run one MCTS simulation."""
+        """
+        Run one MCTS simulation.
+        Args:
+            root (MCTSNode): The root node of the MCTS tree.
+            legal_actions (List[int]): List of legal actions for the current state.
+            game_env: Current game environment.
+        """
         node = root  # Start from root
         path = [node]  # Track path for backup
 
@@ -249,7 +295,12 @@ class AdaptiveMCTS:
             value = -value  # Flip value for opponent (zero-sum game)
 
     def _evaluate(self, game_env) -> Tuple[float, np.ndarray]:
-        """Evaluate position using neural network."""
+        """Evaluate position using neural network.
+        Args:
+            game_env: Current game environment.
+        Returns:
+            Tuple[float, np.ndarray]: Value of position and policy probabilities.
+        """
         state = game_env.get_observation()  # Get state representation
         state_tensor = torch.FloatTensor(state).unsqueeze(0).permute(0, 3, 1, 2).to(self.device)  # Convert to tensor
 
@@ -262,12 +313,21 @@ class AdaptiveMCTS:
 
 
 class BulletChessAlphaZeroAgent:
-    """AlphaZero agent adapted for bullet chess."""
+    """AlphaZero agent adapted for bullet chess.
+    This agent uses a neural network for policy and value estimation, and MCTS for move selection.
+    It adapts its thinking time based on the complexity of the position and remaining time.
+    """
     
     def __init__(self,
                  learning_rate: float = 1e-3,  # Learning rate for optimizer
                  device: str = None):  # Device to run on (CPU/GPU)
+        """
+        Initialize the AlphaZero agent.
 
+        Args:
+            learning_rate (float): Learning rate for optimizer.
+            device (str): Device to run on (CPU/GPU).
+        """
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Auto-detect device
 
         # Neural network
@@ -340,11 +400,20 @@ class BulletChessAlphaZeroAgent:
             return np.random.choice(legal_actions, p=legal_probs)  # Sample according to probabilities
 
     def store_training_data(self, state, action_probs, value):
-        """Store training data for later network updates."""
+        """Store training data for later network updates.
+        Args:
+            state: Game state representation (e.g., board position).
+            action_probs: Action probabilities from the policy network.
+            value: Value estimate from the value network.
+        """
         self.training_data.append((state, action_probs, value))  # Add training example
 
     def train_network(self, epochs: int = 10, batch_size: int = 32):
-        """Train the neural network on collected self-play data."""
+        """Train the neural network on collected self-play data.
+        Args:
+            epochs (int): Number of training epochs.
+            batch_size (int): Batch size for training.
+        """
         if len(self.training_data) < batch_size:
             return  # Not enough data to train
 
@@ -390,7 +459,9 @@ class BulletChessAlphaZeroAgent:
                 logging.info(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}")
 
     def clear_training_data(self):
-        """Clear stored training data."""
+        """Clear stored training data.
+        This method is called after training to reset the training data.
+        """
         self.training_data = []  # Reset training data list
 
     def allocate_time(self, position_complexity: float, remaining_time: float) -> float:
@@ -419,7 +490,10 @@ class BulletChessAlphaZeroAgent:
             return min(base_allocation * complexity_multiplier, 5.0)  # Normal allocation, max 5s
 
     def get_training_stats(self) -> Dict:
-        """Get training statistics."""
+        """Get training statistics.
+        Returns:
+            Dict: Dictionary containing training statistics such as number of training examples, average loss, and total updates.
+        """
         return {
             "training_data_size": len(self.training_data),  # Number of training examples
             "avg_loss_last_10": np.mean(self.losses[-10:]) if self.losses else 0.0,  # Recent average loss
@@ -427,7 +501,10 @@ class BulletChessAlphaZeroAgent:
         }
 
     def save(self, filepath: str):
-        """Save model and training state."""
+        """Save model and training state.
+        Args:
+            filepath (str): Path to save the model checkpoint.
+        """
         torch.save({
             'model_state_dict': self.neural_net.state_dict(),  # Neural network weights
             'optimizer_state_dict': self.optimizer.state_dict(),  # Optimizer state
@@ -437,7 +514,10 @@ class BulletChessAlphaZeroAgent:
         logging.info(f"AlphaZero model saved to {filepath}")
 
     def load(self, filepath: str):
-        """Load model and training state."""
+        """Load model and training state.
+        Args:
+            filepath (str): Path to load the model checkpoint from.
+        """
         checkpoint = torch.load(filepath, map_location=self.device)  # Load checkpoint
 
         # Restore network and optimizer states
@@ -450,10 +530,13 @@ class BulletChessAlphaZeroAgent:
         logging.info(f"Loaded {len(self.training_data)} training samples")
 
     def set_eval_mode(self):
-        """Set network to evaluation mode."""
-        self.neural_net.eval()  # Disable dropout and batch norm updates
+        """Set network to evaluation mode.
+        This method disables dropout and batch normalization updates during evaluation.
+        """
+        self.neural_net.eval()
 
     def set_train_mode(self):
-        """Set network to training mode."""
-        self.neural_net.train()  # Enable dropout and batch norm updates
-    """AlphaZero agent adapted for bullet chess."""
+        """Set network to training mode.
+        This method enables dropout and batch normalization updates during training.
+        """
+        self.neural_net.train()
