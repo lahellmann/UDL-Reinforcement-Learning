@@ -387,8 +387,15 @@ class BulletChessDDQNTrainer:
         Collects training data, performs learning updates, and evaluates performance.
         Tracks statistics such as win rates, losses, and draws.
         """
-        episodes = self.cfg["training"]["episodes"]
+
         overall_time = self.cfg["training"]["overall_time"]
+        if training_type == "episodes":
+            episodes = self.cfg["training"]["episodes"]
+        elif training_type == "time":
+            episodes = 5 * (overall_time / 60)  # Assuming 5 episodes per minute
+        else:
+            raise ValueError(f"Invalid training type: {training_type}. Use 'episodes' or 'time'.")
+
         warmup = self.cfg["training"]["warmup"]
         log_freq = self.cfg["training"]["log_freq"]
         eval_freq = self.cfg["training"]["eval_freq"]
@@ -549,10 +556,7 @@ class BulletChessDDQNTrainer:
                 # Logging
                 if ep % log_freq == 0 or ep == 1:
                     elapsed_time = time.time() - (end_time - overall_time)
-                    estimated_eps_per_min = 5
-                    total_time_minutes = self.cfg["training"]["overall_time"] / 60
-                    estimated_total_episodes = estimated_eps_per_min * total_time_minutes
-                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, estimated_total_episodes)
+                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, episodes)
                     ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
 
                     self.logger.info(
@@ -874,7 +878,7 @@ class BulletChessAlphaZeroTrainer:
 
         return loss
 
-    def evaluate(self, n_games: int, ep: int, total_episodes: int,
+    def evaluate(self, n_games: int = 30, ep: int = 1, total_episodes: int = 10,
                  force_strength: float = None) -> Tuple[float, float]:
         """
         Evaluate agent performance against opponent
@@ -957,8 +961,14 @@ class BulletChessAlphaZeroTrainer:
             - Best model tracking and checkpointing
             - Comprehensive logging of training progress
         """
-        episodes = self.cfg["training"]["episodes"]
         overall_time = self.cfg["training"]["overall_time"]
+        if training_type == "episodes":
+            episodes = self.cfg["training"]["episodes"]
+        elif training_type == "time":
+            episodes = 1 * (overall_time / 60)  # Assuming 1 episode per minute
+        else:
+            raise ValueError(f"Invalid training type: {training_type}. Use 'episodes' or 'time'.")
+
         warmup = self.cfg["training"]["warmup"]
         log_freq = self.cfg["training"]["log_freq"]
         eval_freq = self.cfg["training"]["eval_freq"]
@@ -1063,8 +1073,7 @@ class BulletChessAlphaZeroTrainer:
                 # Logging
                 if ep % log_freq == 0 or ep == 0:
                     current_time = time.time() - (end_time - overall_time)
-                    estimated_total_episodes = 1 * (overall_time / 60)  # Assuming 1 episode per minute
-                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, estimated_total_episodes)
+                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, episodes)
                     ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
                     self.logger.info(
                         f"Time {current_time:.2f}/{overall_time:.2f} | {res['outcome']:4s} | "
@@ -1094,8 +1103,9 @@ class BulletChessAlphaZeroTrainer:
 
 
         self.logger.info("=== FINAL EVALUATION ===")
+        num_eval_games = self.cfg["training"]["eval_games"]
         for strength in [0.1, 0.15, 0.2, 0.25, 0.3]:
-            wr, wr_true = self.evaluate(30, episodes, episodes, force_strength=strength)
+            wr, wr_true = self.evaluate(num_eval_games, ep, ep, force_strength=strength)
             self.logger.info(f"vs {strength:.2f} strength: WR={wr:.3f} (true={wr_true:.3f})")
         
         
