@@ -784,12 +784,14 @@ class BulletChessAlphaZeroTrainer:
         training_examples = []
         current_player = 1  # +1 for white, -1 for black
         total_reward = 0.0
+        steps = 0
 
-        while not done:
+        while not done and steps < self.cfg["training"]["max_moves"]:
             board_state = state  # Store current board state
             # Run MCTS to get action probabilities and selected action
             pi = self.agent.run_mcts(self.env)  # pi is array of action probabilities
             action = self.agent.select_action_from_pi(pi) # Select action based on MCTS policy
+            steps += 1
 
             # Store (state, pi, current_player) for training after game ends
             training_examples.append((board_state, pi, current_player))
@@ -800,6 +802,15 @@ class BulletChessAlphaZeroTrainer:
             current_player = -current_player  # switch perspective after each move
             total_reward += r_agent
 
+        # Handle move limit penalty
+        if steps >= self.cfg["training"]["max_moves"] and ended_by == "unknown":
+            ended_by = "move_limit"
+            if is_training:
+                final_pen = self.cfg["training"]["move_limit_penalty"]
+                mask = np.zeros((self.agent.n_actions,), dtype=np.bool_)
+                self.agent.store_transition(state, action if 'action' in locals() else 0,
+                                          final_pen, state, True, mask)
+                total_reward += final_pen
         # Assign values to each example based on game outcome
         result = self.env.get_result()  # e.g. '1-0', '0-1', '1/2-1/2'
         if result == "1-0":
@@ -1102,7 +1113,8 @@ class BulletChessAlphaZeroTrainer:
         Returns:
             Game result dictionary with statistics
         """
-        training_data, result, reason, agent_white, reward = self.self_play_game()
+        training_data, result, reason, agent_white, reward = self.self_play_game(is_training)
+
 
         if is_training:
             self.add_to_buffer(training_data)
