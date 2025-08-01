@@ -720,6 +720,7 @@ class BulletChessAlphaZeroTrainer:
         self.best_win_rate = -1.0
         
 
+        self.current_training_type = "episodes"  # Default training type
         utils.seed_everything(cfg.get("seed", 42))
         self.training_log = {}
         self.logger = self.setup_logging()
@@ -733,7 +734,7 @@ class BulletChessAlphaZeroTrainer:
             "illegal": 0, "games_played": 0
         }
 
-        self.current_training_type = "episodes"  # Default training type
+        
         self.ended_by = Counter() # Counter to track reasons for game endings
         self.losses = []
 
