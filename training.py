@@ -769,7 +769,7 @@ class BulletChessAlphaZeroTrainer:
         self.logger = logging.getLogger("PolicyValueLogger")
         return self.logger
 
-    def self_play_game(self):
+    def self_play_game(self, is_training:bool = True):
         """Play one full game using MCTS-guided moves, collecting training data.
         Runs a complete self-play game where the agent plays against itself using MCTS.
         Collects training examples in the form of (state, policy, value) tuples.
