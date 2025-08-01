@@ -1,6 +1,6 @@
-import ipywidgets as widgets
-from IPython.display import display, clear_output
+import os
 import chess
+<<<<<<< Updated upstream
 import threading
 import time
 import torch
@@ -9,60 +9,74 @@ from environment import BulletChessEnv
 from ddqn_agent import load_ddqn_from_path , DDQNAgent
 from policyvalue_agent import load_mcts_from_path , MCTSAgent
 
+=======
+import asyncio
+import ipywidgets as widgets
+from IPython.display import display
+import chess.svg
 
+from ddqn_agent import DDQNAgent
+from policyvalue_agent import MCTSAgent
+from environment import BulletChessEnv
+from debug import load_agent_from_file
+import utils
+>>>>>>> Stashed changes
 
+class JupyterChessApp:
+    def __init__(self, model_path, user_color=chess.WHITE):
+        self.env = BulletChessEnv()
+        self.agent = load_agent_from_file(model_path, cfg=utils.get_truly_fixed_cfg(), env=self.env)
+        self.user_color = user_color
+        self.moves_history = []
+        self.is_agent_turn = (self.env.state.board.turn != self.user_color)
+        self.selected_square = None
 
-timer_thread = None
-timer_running = True
-time_up = False
-env = BulletChessEnv()
-agent = None
+        self.board_svg = widgets.HTML()
+        self.info = widgets.Textarea(layout=widgets.Layout(width='400px', height='150px'))
+        self.restart_btn = widgets.Button(description="Restart")
+        self.restart_btn.on_click(self.restart_game)
+        self.replay_btn = widgets.Button(description="Replay")
+        self.replay_btn.on_click(self.replay_game)
 
-white_agent = None
-black_agent = None
-selected_white = None
-selected_black = None
+        self.move_input = widgets.Combobox(
+            placeholder='Type your move (e.g. e2e4 or Nf3)',
+            description='Move:',
+            layout=widgets.Layout(width='300px')
+        )
+        self.move_input.observe(self.on_move_input_submit, names='value')
 
+        self.ui = widgets.VBox([
+            self.board_svg,
+            self.info,
+            widgets.HBox([self.move_input, self.restart_btn, self.replay_btn])
+        ])
 
-selected_square = None
-buttons = {}
-container = None  # Container holding the chessboard buttons
-timer_label = widgets.Label()
-unicode_pieces = {
-    'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
-    'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚',
-}
-# --- Buttons for restart and cancel ---
-restart_button = widgets.Button(description="Restart")
-cancel_button = widgets.Button(description="Cancel")
+        self.restart_game(None)
 
-def on_restart_clicked(b):
-    global env, board, selected_square, timer_running, time_up, game_started
-    timer_running = False
-    time_up = False
-    game_started = True  # Make sure game is marked as started
-    env.reset()
-    board = env.state.board
-    selected_square = None
-    enable_all_buttons()
-    update_buttons()
-    update_timer_label()
-    start_timer()
-    print("Game restarted.")
+    def update_display(self):
+        board = self.env.state.board
+        svg = chess.svg.board(board=board, size=400)
+        self.board_svg.value = svg
 
-    # Let agent move if it's their turn
-    if env.state.board.turn and white_agent is not None:
-        agent_turn()
-    elif not env.state.board.turn and black_agent is not None:
-        agent_turn()
+        last_move = board.peek().uci() if board.move_stack else "None"
+        turn_text = "Your turn." if not self.is_agent_turn else "Waiting for agent..."
+        self.info.value = (
+            f"Move count: {self.env.get_move_count()}\n"
+            f"White time: {self.env.state.white_time:.1f} sec\n"
+            f"Black time: {self.env.state.black_time:.1f} sec\n"
+            f"Last move: {last_move}\n"
+            f"{turn_text}"
+        )
 
-def on_cancel_clicked(b):
-    global timer_running, game_started
-    timer_running = False
-    game_started = False  # Ensure game is marked as ended
-    disable_all_buttons()
-    print("Game canceled.")
+        if not self.is_agent_turn:
+            self.update_move_suggestions()
 
+    def update_move_suggestions(self):
+        legal_moves = list(self.env.state.board.legal_moves)
+        suggestions = [self.env.state.board.san(m) for m in legal_moves]
+        self.move_input.options = suggestions
+
+<<<<<<< Updated upstream
 restart_button.on_click(on_restart_clicked)
 cancel_button.on_click(on_cancel_clicked)
 
@@ -202,100 +216,119 @@ def on_click(b):
             selected_square = None
             clear_highlights()
             update_buttons()
+=======
+    def on_move_input_submit(self, change):
+        if self.is_agent_turn:
+            self.info.value += "\nPlease wait for the agent."
+>>>>>>> Stashed changes
             return
 
-        from_square = chess.parse_square(selected_square)
-        to_square = chess.parse_square(sq)
-
-        move = chess.Move(from_square, to_square)
-
-        if move not in board.legal_moves:
-            for promo_piece in [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT]:
-                promo_move = chess.Move(from_square, to_square, promotion=promo_piece)
-                if promo_move in board.legal_moves:
-                    move = promo_move
-                    break
-            else:
-                print("Illegal move. Try again.")
+        move_str = change['new']
+        board = self.env.state.board
+        try:
+            move = board.parse_san(move_str)
+        except:
+            try:
+                move = chess.Move.from_uci(move_str)
+                if move not in board.legal_moves:
+                    raise ValueError
+            except:
+                self.info.value += "\nInvalid move."
                 return
 
-        print("Before env.step with move:", move.uci())
+        self.make_user_move(move.uci())
+        self.move_input.value = ''
 
-        obs, reward, done, info = env.step(move.uci())
-        print(f"Done after human move: {done}")
-        board = env.state.board
-        selected_square = None
-        clear_highlights()
-        update_buttons()
-        update_timer_label()
-
+    def make_user_move(self, uci_move):
+        obs, reward, done, info = self.env.step(uci_move)
+        self.moves_history.append(uci_move)
+        self.update_display()
         if done:
-            print_game_over(info)
-            disable_all_buttons()
-            stop_timer()
+            self.handle_game_end(info)
+            return
+        self.is_agent_turn = True
+        asyncio.create_task(self.agent_move_async())
+
+    async def agent_move_async(self):
+        await asyncio.sleep(1)
+        if self.env.is_game_over():
+            self.handle_game_end({})
             return
 
-        agent_turn()
+        obs = self.env.get_observation()
+        legal_actions = self.env.get_legal_actions()
 
-def agent_turn():
-    global board, env, white_agent, black_agent, game_started, selected_white, selected_black
-    print("agent turn is called")
-
-    if not game_started:
-        print("Game not started, returning")
-        return
-
-    current_player = "white" if env.state.board.turn else "black"
-    print("Current player:", current_player)
-    print("Selected white:", selected_white)
-    print("Selected black:", selected_black)
-
-    # Check if it’s human turn, skip agent move if so
-    if (current_player == "white" and selected_white == "Player") or (current_player == "black" and selected_black == "Player"):
-        print("Human turn, no agent move")
-        return
-
-    agent = white_agent if current_player == "white" else black_agent
-    print("Agent:", agent)
-
-    if agent is None:
-        print("No agent assigned, returning")
-        return
-
-    obs = env.get_observation()
-    legal_actions = env.get_legal_actions()
-
-    print("Obs type:", type(obs), "Shape:", getattr(obs, 'shape', None))
-    print("Legal actions:", legal_actions)
-
-    if hasattr(agent, "select_action"):
-        action = agent.select_action(obs, legal_actions)
-    elif hasattr(agent, "select_action_from_pi") and hasattr(agent, "get_pi"):
-        if agent.get_pi() is None:
-            pi = agent.run_mcts(env)
+        if isinstance(self.agent, MCTSAgent):
+            pi = self.agent.run_mcts(self.env)
+            action_index = self.agent.select_action_from_pi(pi, temperature=1.0)
         else:
-            pi = agent.get_pi()
-        action = agent.select_action_from_pi(pi)
-    else:
-        raise AttributeError("Agent has no valid action selection method.")
+            action_index = self.agent.select_action(obs, legal_actions)
 
-    uci_move = env._action_to_move(action).uci()
-    print(f"Agent moves: {uci_move}")
+        move = self.env._action_to_move(action_index)
+        uci_move = move.uci()
 
-    obs, reward, done, info = env.step(uci_move)
-    print(f"Done after agent move: {done}")
-    board = env.state.board
-    update_buttons()
-    update_timer_label()
+        obs, reward, done, info = self.env.step(uci_move)
+        self.moves_history.append(uci_move)
+        self.update_display()
 
-    if done:
-        print_game_over(info)
-        disable_all_buttons()
-        stop_timer()
+        if done:
+            self.handle_game_end(info)
+            return
+
+        self.is_agent_turn = False
+
+    def handle_game_end(self, info):
+        reason = info.get("reason", "Game over")
+        winner = info.get("winner", None)
+        msg = f"{reason}. "
+        if winner:
+            msg += f"Winner: {winner}"
+        else:
+            msg += "Draw or unknown outcome."
+        self.info.value += "\n" + msg
+
+    def restart_game(self, _):
+        self.env.reset()
+        self.moves_history.clear()
+        self.is_agent_turn = (self.env.state.board.turn != self.user_color)
+        self.update_display()
+        if self.is_agent_turn:
+            asyncio.create_task(self.agent_move_async())
+
+    def replay_game(self, _):
+        async def replay():
+            self.env.reset()
+            self.update_display()
+            for move in self.moves_history:
+                await asyncio.sleep(1)
+                self.env.step(move)
+                self.update_display()
+        asyncio.create_task(replay())
 
 
+class JupyterChessLauncher:
+    def __init__(self):
+        self.model_dropdown = widgets.Dropdown(
+            options=[f for f in os.listdir("models") if f.endswith(".pth")],
+            description="Model:",
+            layout=widgets.Layout(width='300px')
+        )
+        self.color_dropdown = widgets.Dropdown(
+            options=[("White", chess.WHITE), ("Black", chess.BLACK)],
+            description="Your Color:",
+            layout=widgets.Layout(width='300px')
+        )
+        self.start_btn = widgets.Button(description="Start Game", button_style="success")
+        self.start_btn.on_click(self.start_game)
 
+        self.ui = widgets.VBox([
+            self.model_dropdown,
+            self.color_dropdown,
+            self.start_btn
+        ])
+        self.app = None
 
+<<<<<<< Updated upstream
 
 
 def print_game_over(info):
@@ -427,3 +460,10 @@ def select_agents(models_dir="models"):
 
 
 
+=======
+    def start_game(self, _):
+        model_path = os.path.join("models", self.model_dropdown.value)
+        user_color = self.color_dropdown.value
+        self.app = JupyterChessApp(model_path, user_color)
+        display(self.app.ui)
+>>>>>>> Stashed changes
