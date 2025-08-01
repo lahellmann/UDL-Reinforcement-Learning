@@ -1,12 +1,7 @@
-"""
-
-"""
 import time
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Optional, Union
-
 import numpy as np
-
 import chess
 
 @dataclass

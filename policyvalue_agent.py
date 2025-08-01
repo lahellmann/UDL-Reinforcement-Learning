@@ -176,13 +176,6 @@ class MCTSAgent:
             env (BulletChessEnv): The environment in which the agent operates.
             device (torch.device, optional): The device on which the model will be trained and evaluated.
                 Defaults to "cuda" if available, otherwise "cpu".
-        Raises:
-            ValueError: If the configuration dictionary does not contain the required keys.
-        Raises:
-            TypeError: If the environment is not an instance of BulletChessEnv.
-        Raises:            RuntimeError: If the device is not recognized or available.
-        Raises:            RuntimeError: If the model initialization fails.
-        Raises:            RuntimeError: If the optimizer initialization fails. 
 
         Initializes the MCTSAgent with the given configuration and environment.
         This method sets up the neural network model, optimizer, and device for training and evaluation.
