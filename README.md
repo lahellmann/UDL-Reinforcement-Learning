@@ -1,6 +1,12 @@
 # Reinforcement Learning (based on the book Understanding Deep Learning by Simon J.D. Prince[[1]](#references))
 This repository contains a project for the seminar 'Understanding Deep Learning' by Lukas Niehaus in the summer term 2025 at the University of Osnabrück. 
-
+## **Table of Contents**
+- [Overview](#overview)
+- [QuickStart](#quickstart)
+- [Structure of this repository](#structure-of-this-repository)
+- [The two Agents](#the-two-agents)
+- [References](#references)
+---
 ## Overview
 Reinforcement Learning is a type of Machine Learning where an agent learns to make decisions by interacting with an environment and recieves rewards for good behaviour and penalties for bad ones.
 
@@ -11,7 +17,8 @@ Chess therefore is a great option for reinforcement learning, because
   
 The aim of this project is to develop reinforcement learning agents for bullet chess, where each player has only 60 seconds total to complete the game. Unlike traditional chess agents that focus solely on move quality, our agents are designed to also manage time pressure, learning to make decisions that are not only strong but also fast when required.
 
-We are going to use DQN and agent-critic policies for our agents. Since this repository is still being worked on, there's only a trained DQN agent so far, that you could play against. We are currently improving said game and working on training the agent-critic one. 
+We are going to use DQN and policy-value with alpha-zero style training for our agents. 
+You can play against any of these, if you please.
 
 ## QuickStart
 To start of quickly and be able to execute the code properly, follow this guide.
@@ -87,7 +94,7 @@ conda activate venv
 pip install -r requirements.txt
 ```
 
-### Structure of this repository
+## Structure of this repository
 'agent_dqn.py' - This file contains all relevant functions and definitions for our agent that uses Deep Q-networks to learn. ([open](agent_dqn.py))
 
 'agent_policy_value.py' - This file contains all relevant functions and definitions for our agents policy. ([open](agent_policy_value.py))
@@ -102,6 +109,79 @@ pip install -r requirements.txt
 
 'utils.py' - This file contains useful functions that might be used in the future. ([open](utils.py))
 
+## The two Agents
+### DDQN(Double Deep Q-Network)
+DDQN is part of the family of value-based reinforcement learning algorithms. It extends the classical Deep Q-Network (DQN) by addressing the problem of overestimation in action-value estimates. In standard DQN, the same network is used to both select and evaluate the best action, which can lead to optimistic value estimates. DDQN mitigates this by decoupling action selection from action evaluation.
+Core components:
+
+*    Online Q-network: predicts Q-values for the current state and is updated every training step.
+*    Target Q-network: a delayed copy of the online network used to evaluate the Q-value of the next state, updated less frequently (e.g. every few hundred steps) to stabilize learning.
+*    Replay buffer: stores experiences of the form (state, action, reward, next state, done) to break temporal correlations and allow for more sample-efficient learning.
+*    Epsilon-greedy policy: balances exploration and exploitation during training by sometimes selecting random actions.
+
+Basic idea:
+```bash
+1. Start an episode at initial state s
+2. Choose an action a using an ε-greedy policy derived from the online Q-network
+3. Take action a in the environment
+4. Observe reward r and next state s′
+5. Choose next action a′ using the online network, but evaluate it using the target Q-network
+6. Compute target value:
+    y=r+γQtarget(s′,arg⁡max⁡aQonline(s′,a))y=r+γQtarget​(s′,argmaxa​Qonline​(s′,a))
+7. Update Q-network by minimizing the loss between current Q-value and target y
+8. Set s ← s′, a ← a′, and repeat until the episode ends
+9. Periodically, copy the online network weights into the target network
+
+Continue training until a convergence threshold is reached or a set number of episodes complete
+The policy is derived from the trained Q-values:
+π(s)=arg⁡max⁡aQ(s,a)π(s)=argmaxa​Q(s,a)
+```
+
+### Policy-Value with AlphaZero-style training
+This agent is based on AlphaZero, a powerful reinforcement learning framework that combines policy and value learning with Monte Carlo Tree Search (MCTS). Unlike DDQN, which estimates action-values directly, AlphaZero learns a policy (which actions to prefer) and a value function (how good a position is) using a shared neural network.
+
+Instead of learning purely from rewards after taking actions, the agent improves itself through self-play guided by MCTS, which explores and refines the policy using simulations from the neural network[[2]](#references).
+
+Core components:
+
+*    Policy-Value Neural Network: Given a state (e.g. a chess board), it outputs:
+      *    A policy (π) — a probability distribution over legal actions
+      *    A value (v) — the expected game outcome from the current position
+*    Monte Carlo Tree Search:
+      *    Uses the policy and value predictions to guide exploration of possible future states.
+      *    Outputs improved target policy (based on visit counts) and simulated value.
+*    Replay buffer: stores (state, π, value) triplets collected during self-play games.
+*    Training loop: alternates between self-play and training using stored experiences.
+
+Basic idea
+```bash
+Start an episode (a self-play game) at initial state s
+
+At each move:
+a. Use Monte Carlo Tree Search (MCTS) guided by the current policy-value network
+b. MCTS returns a probability distribution π over legal actions
+c. Choose action a by sampling from π (adds exploration)
+d. Record training tuple: (state s, policy π, current player)
+e. Take action a → observe next state s′
+f. Set s ← s′, and continue until the game ends
+
+After game ends, assign game result z (+1 win, -1 loss, 0 draw)
+
+For each stored tuple (s, π, player), compute value = z * player_sign
+Add (s, π, value) to the replay buffer
+
+After collecting enough games:
+a. Sample mini-batches from the buffer
+b. Perform gradient descent to minimize loss:
+    Policy loss: cross-entropy between predicted and target π
+    Value loss: mean squared error between predicted and true value
+Repeat the self-play → training cycle
+
+Continue until the policy converges or a preset training limit is reached
+The learned policy is directly given by the network’s output distribution over actions
+```
+
 ## References
 <a name="references"></a>
 [1] S. J. D. Prince, Understanding Deep Learning. The MIT Press, 2023. [website to book](https://udlbook.github.io/udlbook/)
+[2] Silver, D., Schrittwieser, J., Simonyan, K. et al. Mastering the game of Go without human knowledge. Nature 550, 354–359 (2017). [https://doi.org/10.1038/nature2427]
