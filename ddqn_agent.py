@@ -259,8 +259,8 @@ class DDQNAgent:
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Initialize networks
-        self.q = DuelingQNet(n_actions=cfg["agent"]["n_actions"], dropout=cfg["agent"]["dropout"]).to(self.device)
-        self.q_target = DuelingQNet(n_actions=cfg["agent"]["n_actions"], dropout=cfg["agent"]["dropout"]).to(self.device)
+        self.q = DuelingQNet(n_actions=cfg["model"]["n_actions"], dropout=cfg["agent"]["dropout"]).to(self.device)
+        self.q_target = DuelingQNet(n_actions=cfg["model"]["n_actions"], dropout=cfg["agent"]["dropout"]).to(self.device)
         self.q_target.load_state_dict(self.q.state_dict())
 
         # Optimizer with weight decay for regularization
@@ -276,15 +276,20 @@ class DDQNAgent:
         self.batch_size = cfg["agent"]["batch_size"]
         self.target_update = cfg["agent"]["target_update"]
         self.steps = 0
-        self.n_actions = cfg["agent"]["n_actions"]
+        self.n_actions = cfg["model"]["n_actions"]
         self.tau = cfg["agent"]["tau"]
         self.use_soft_update = cfg["agent"]["use_soft_update"]
         self.noise_std = cfg["agent"]["noise_std"]
 
         # Experience replay components
-        self.per_buffer = PERBuffer(capacity=100000, n_actions=cfg["agent"]["n_actions"],
-                                    alpha=cfg["agent"]["per_alpha"], beta_start=cfg["agent"]["per_beta_start"],
-                                    beta_frames=cfg["agent"]["per_beta_frames"])
+        self.per_buffer = PERBuffer(
+            capacity=cfg["replay"]["capacity"],
+            n_actions=cfg["model"]["n_actions"],
+            alpha=cfg["replay"]["per_alpha"],
+            beta_start=cfg["replay"]["per_beta_start"],
+            beta_frames=cfg["replay"]["per_beta_frames"]
+        )
+
         self.n_step = cfg["agent"]["n_step"]
         self.nstep_buffer = NStepBuffer(n=cfg["agent"]["n_step"], gamma=cfg["agent"]["gamma"])
 

@@ -48,6 +48,7 @@ class BulletChessDDQNTrainer:
         # Initialize agent
         self.agent = DDQNAgent(cfg, env)
 
+        self.current_training_type = "episodes"  # Default training type
         self.setup_logging()
         self.training_log = {}
 
@@ -60,7 +61,7 @@ class BulletChessDDQNTrainer:
             "illegal": 0
         }
 
-        self.current_training_type = "episodes"  # Default training type
+        
         self.ended_by = Counter()
         self.losses = []
 
@@ -174,7 +175,7 @@ class BulletChessDDQNTrainer:
 
         return best if best is not None else random.choice(legal_actions)
 
-    def play_one(self, is_training: bool, episode_idx: int, total_episodes: int,
+    def play_one(self, is_training: bool, episode_idx: int, total_episodes: int = 30,
                  force_eval_strength: float = None) -> Dict:
         """
         Play one complete game between agent and opponent
@@ -548,7 +549,10 @@ class BulletChessDDQNTrainer:
                 # Logging
                 if ep % log_freq == 0 or ep == 1:
                     elapsed_time = time.time() - (end_time - overall_time)
-                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, overall_time)
+                    estimated_eps_per_min = 5
+                    total_time_minutes = self.cfg["training"]["overall_time"] / 60
+                    estimated_total_episodes = estimated_eps_per_min * total_time_minutes
+                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, estimated_total_episodes)
                     ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
 
                     self.logger.info(
@@ -1058,7 +1062,8 @@ class BulletChessAlphaZeroTrainer:
                 # Logging
                 if ep % log_freq == 0 or ep == 0:
                     current_time = time.time() - (end_time - overall_time)
-                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, overall_time)
+                    estimated_total_episodes = 1 * (overall_time / 60)  # Assuming 1 episode per minute
+                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, estimated_total_episodes)
                     ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
                     self.logger.info(
                         f"Time {current_time:.2f}/{overall_time:.2f} | {res['outcome']:4s} | "

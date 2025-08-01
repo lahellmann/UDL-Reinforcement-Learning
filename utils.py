@@ -16,6 +16,8 @@ def seed_everything(seed: int = 42):
 
 def linear_anneal(start, end, cur, total):
     """Linear annealing schedule for hyperparameters"""
+    if total <= 0:
+        total = 1  # Avoid division by zero
     t = min(1.0, cur / float(total))
     return start + (end - start) * t
 
