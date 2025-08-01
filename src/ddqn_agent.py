@@ -9,8 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-import utils
-from environment import BulletChessEnv
+import src.utils as utils
+from src.environment import BulletChessEnv
 
 def load_ddqn_from_path(path, cfg, env):
     """

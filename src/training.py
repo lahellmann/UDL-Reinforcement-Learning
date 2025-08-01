@@ -8,12 +8,12 @@ import chess
 import time
 import numpy as np
 import json
-import utils
+import src.utils as utils
 
 
-from environment import BulletChessEnv
-from ddqn_agent import DDQNAgent
-from policyvalue_agent import MCTSAgent
+from src.environment import BulletChessEnv
+from src.ddqn_agent import DDQNAgent
+from src.policyvalue_agent import MCTSAgent
 
 
 class BulletChessDDQNTrainer:

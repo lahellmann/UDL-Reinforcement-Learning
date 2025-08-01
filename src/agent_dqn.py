@@ -1,7 +1,3 @@
-### DQN ###
-
-# src/bullet_chess_rl/agents/dqn/dqn_agent.py
-
 import logging
 import random
 from collections import deque
@@ -12,9 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-### DQN ###
 
-# src/bullet_chess_rl/agents/dqn/dqn_agent.py
 
 class ChessQNetwork(nn.Module):
     """Q-Network for bullet chess position evaluation."""

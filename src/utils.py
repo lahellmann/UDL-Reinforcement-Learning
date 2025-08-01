@@ -1,28 +1,45 @@
 import chess
 import random
-
 from typing import List, Tuple, Dict, Optional, Union
-
 import numpy as np
 import torch
+import os
+from src.policyvalue_agent import load_mcts_from_path
+from src.ddqn_agent import load_ddqn_from_path
+
 
 # Utility functions for reproducibility and learning rate scheduling
 def seed_everything(seed: int = 42):
-    """Set random seeds for reproducible results"""
+    """Set random seeds for reproducible results
+    Args:
+        seed (int): The seed value to use for random number generation.
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
 def linear_anneal(start, end, cur, total):
-    """Linear annealing schedule for hyperparameters"""
+    """Linear annealing schedule for hyperparameters
+    Args:
+        start (float): Starting value of the hyperparameter.
+        end (float): Ending value of the hyperparameter.
+        cur (int): Current step in the annealing process.
+        total (int): Total number of steps for the annealing process.
+    Returns:
+        float: The annealed value of the hyperparameter.
+    """
     if total <= 0:
         total = 1  # Avoid division by zero
     t = min(1.0, cur / float(total))
     return start + (end - start) * t
 
 def get_time_pressure_level(time_remaining: float) -> str:
-    """Convert numeric time to pressure level."""
+    """Convert numeric time to pressure level.
+    Args:
+        time_remaining (float): Time remaining in seconds.
+    Returns:
+        str: Pressure level as a string ('relaxed', 'moderate', 'pressure', 'scramble')."""
     if time_remaining > 30:
         return "relaxed"
     elif time_remaining > 10:
@@ -33,26 +50,30 @@ def get_time_pressure_level(time_remaining: float) -> str:
         return "scramble"
 
 def generate_all_possible_uci_moves():
-        board = chess.Board()
-        moves = set()
-        squares = list(chess.SQUARES)
-        promotion_pieces = [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT]
+    """Generate all possible UCI moves for a chess game.
+    Returns:
+        List[str]: A sorted list of all possible UCI moves.
+    """
+    board = chess.Board()
+    moves = set()
+    squares = list(chess.SQUARES)
+    promotion_pieces = [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT]
 
-        for from_square in squares:
-            for to_square in squares:
-                # Normal move
-                move = chess.Move(from_square, to_square)
-                moves.add(move.uci())
-                # Promotion moves (only if move is from 7th rank for white or 2nd rank for black)
-                if chess.square_rank(from_square) == 6:  # White 7th rank
-                    for promo in promotion_pieces:
-                        promo_move = chess.Move(from_square, to_square, promotion=promo)
-                        moves.add(promo_move.uci())
-                if chess.square_rank(from_square) == 1:  # Black 2nd rank
-                    for promo in promotion_pieces:
-                        promo_move = chess.Move(from_square, to_square, promotion=promo)
-                        moves.add(promo_move.uci())
-        return sorted(moves)
+    for from_square in squares:
+        for to_square in squares:
+            # Normal move
+            move = chess.Move(from_square, to_square)
+            moves.add(move.uci())
+            # Promotion moves (only if move is from 7th rank for white or 2nd rank for black)
+            if chess.square_rank(from_square) == 6:  # White 7th rank
+                for promo in promotion_pieces:
+                    promo_move = chess.Move(from_square, to_square, promotion=promo)
+                    moves.add(promo_move.uci())
+            if chess.square_rank(from_square) == 1:  # Black 2nd rank
+                for promo in promotion_pieces:
+                    promo_move = chess.Move(from_square, to_square, promotion=promo)
+                    moves.add(promo_move.uci())
+    return sorted(moves)
 
 def get_truly_fixed_cfg():
     """
@@ -124,4 +145,17 @@ def get_truly_fixed_cfg():
             "c_puct": 1.5
         }
     }
+
+def load_agent_from_file(filepath, cfg, env):
+    """Load an agent from a file path.
+    Args:
+        filepath (str): The file path to load the agent from.
+        cfg (dict): The configuration dictionary for the agent.
+        env (Environment): The environment instance for the agent.
+    """
+    filename = os.path.basename(filepath).lower()
+    if "ddqn" in filename:
+        return load_ddqn_from_path(filepath, cfg, env)
+    else:
+        return load_mcts_from_path(filepath, cfg, env)
 

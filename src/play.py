@@ -5,11 +5,9 @@ import ipywidgets as widgets
 from IPython.display import display
 import chess.svg
 
-from ddqn_agent import DDQNAgent
-from policyvalue_agent import MCTSAgent
-from environment import BulletChessEnv
-from debug import load_agent_from_file
-import utils
+from src.policyvalue_agent import MCTSAgent
+from src.environment import BulletChessEnv
+import src.utils as utils
 
 class JupyterChessApp:
     """
@@ -28,7 +26,7 @@ class JupyterChessApp:
             user_color (chess.Color): Color of the user (white or black).
         """
         self.env = BulletChessEnv()
-        self.agent = load_agent_from_file(model_path, cfg=utils.get_truly_fixed_cfg(), env=self.env)
+        self.agent = utils.load_agent_from_file(model_path, cfg=utils.get_truly_fixed_cfg(), env=self.env)
         self.user_color = user_color
         self.moves_history = []
         self.is_agent_turn = (self.env.state.board.turn != self.user_color)

@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch import Tensor
 import random
 import chess
-from utils import get_time_pressure_level, generate_all_possible_uci_moves
+from src.utils import get_time_pressure_level, generate_all_possible_uci_moves
 
 
 class ChessPolicyValueNetwork(nn.Module):

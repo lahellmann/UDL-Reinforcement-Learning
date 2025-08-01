@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 
-from environment import BulletChessEnv
+from src.environment import BulletChessEnv
 
 
 
@@ -311,10 +311,22 @@ class MCTSAgent:
       self.optimizer.load_state_dict(ckpt["optim"])
 
     def get_pi(self):
+        """Get the current policy distribution (pi) from the model.
+        Returns:
+            np.ndarray: The current policy distribution (pi) from the model.
+        """
         return getattr(self, "pi", None)
 
 
 def load_mcts_from_path(path, cfg, env):
+    """Load MCTS agent from a file path.
+    Args:
+        path (str): The file path to load the agent from.
+        cfg (dict): The configuration dictionary for the agent.
+        env (Environment): The environment instance for the agent.
+    Returns:
+        MCTSAgent: The loaded MCTS agent.
+    """
     agent = MCTSAgent(cfg, env)
     agent.load(path)
     return agent
