@@ -78,7 +78,7 @@ pip install -r requirements.txt
 <a name="conda"></a>
 - Create a virtual environment:
 1. Open your terminal (Command Prompt on Windows, Terminal on macOS/Linux).
-2. Navigate to the directory where you saved the environment.yml file. (This should be YOUR_PATH/OED_Game_Theoretic_Framework_MBRL/ )
+2. Navigate to the directory where you saved the environment.yml file. (This should be YOUR_PATH/UDL-Reinforcement-Learning/)
 3. Execute the following command to create the environment:
 
 ```bash 
