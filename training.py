@@ -74,6 +74,8 @@ class BulletChessDDQNTrainer:
             "losses_white": 0, "losses_black": 0,
             "illegal": 0
         }
+
+        self.current_training_type = "episodes"  # Default training type
         self.ended_by = Counter()
         self.losses = []
 
@@ -380,7 +382,7 @@ class BulletChessDDQNTrainer:
             "ended_by": ended_by
         }
 
-    def train(self, type: str = "episodes"):
+    def train(self, training_type: str = "episodes"):
         """
         Main training loop with curriculum learning and evaluation
 
@@ -401,7 +403,9 @@ class BulletChessDDQNTrainer:
         eval_freq = self.cfg["training"]["eval_freq"]
         save_freq = self.cfg["training"]["save_freq"]
 
-        if type == "episodes":
+        self.current_training_type = training_type
+
+        if training_type == "episodes":
             for ep in range(1, episodes + 1):
                 # Play training game
                 res = self.play_one(is_training=True, episode_idx=ep, total_episodes=episodes)
@@ -442,7 +446,7 @@ class BulletChessDDQNTrainer:
                     # Save best model
                     if wr > self.best_win_rate:
                         self.best_win_rate = wr
-                        best_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"best_ddqn_truly_fixed_ep{ep}.pth")
+                        best_path = os.path.join(self.cfg["paths"]["models_ddqn"],f"/{self.current_training_type}/",f"best_ddqn_truly_fixed_ep{ep}.pth")
                         self.agent.save(best_path)
                         self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
 
@@ -503,6 +507,59 @@ class BulletChessDDQNTrainer:
                             ckpt_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"ckpt_ddqn_time_ep{ep}.pth")
                             self.agent.save(ckpt_path)
                             self.logger.info(f"Checkpoint saved -> {ckpt_path}")
+
+        elif training_type == "time":
+            end_time = time.time() + overall_time
+            ep = 0
+
+            while time.time() <= end_time:
+                ep += 1
+                res = self.play_one(is_training=True, episode_idx=ep, total_episodes=0)
+
+                # Training
+                loss_val = 0.0
+                if ep >= warmup:
+                    loss_val = self.agent.update()
+                    if loss_val:
+                        self.losses.append(loss_val)
+
+                # Stats
+                total_games = self.stats["wins"] + self.stats["losses"] + self.stats["draws"]
+                wr_all = self.stats["wins"] / max(1, total_games)
+                wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))
+
+                # Logging
+                if ep % log_freq == 0 or ep == 1:
+                    elapsed_time = time.time() - (end_time - overall_time)
+                    opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, overall_time)
+                    ml_rate = self.ended_by.get("move_limit", 0) / max(1, total_games)
+
+                    self.logger.info(
+                        f"Time {elapsed_time:.2f}/{overall_time:.2f} | {res['outcome']:4s} | "
+                        f"R:{res['reward']:6.2f} | M:{res['steps']:3d} | "
+                        f"WR_all:{wr_all:.3f} | WR_true:{wr_true:.3f} | "
+                        f"L:{(np.mean(self.losses) if self.losses else 0):.4f} | "
+                        f"eps:{self.agent.eps:.3f} | buf:{len(self.agent.per_buffer)} | "
+                        f"Ww:{self.stats['wins_white']} Wb:{self.stats['wins_black']} "
+                        f"Lw:{self.stats['losses_white']} Lb:{self.stats['losses_black']} | "
+                        f"opp_str:{opp_strength:.3f} | move_limit_rate:{ml_rate:.3f}"
+                    )
+
+                # Evaluation
+                if ep % eval_freq == 0:
+                    eval_strength = min(0.25, opp_strength + 0.05)
+                    wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, overall_time, eval_strength)
+                    if wr > self.best_win_rate:
+                        self.best_win_rate = wr
+                        best_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"best_ddqn_time_ep{ep}.pth")
+                        self.agent.save(best_path)
+                        self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
+
+                # Checkpoint
+                if ep % save_freq == 0:
+                    ckpt_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"ckpt_ddqn_time_ep{ep}.pth")
+                    self.agent.save(ckpt_path)
+                    self.logger.info(f"Checkpoint saved -> {ckpt_path}")
 
 
         # Final comprehensive evaluation across multiple opponent strengths
@@ -646,6 +703,8 @@ class BulletChessAlphaZeroTrainer:
             "losses_white": 0, "losses_black": 0,
             "illegal": 0, "games_played": 0
         }
+
+        self.current_training_type = "episodes"  # Default training type
         self.ended_by = Counter() # Counter to track reasons for game endings
         self.losses = []
 
@@ -838,7 +897,7 @@ class BulletChessAlphaZeroTrainer:
                          f"len:{np.mean(lens):.1f}")
         return wr_all, wr_true
 
-    def train(self, type: str = "episodes"):
+    def train(self, training_type: str = "episodes"):
         """
         Main training loop with curriculum learning and evaluation
         Runs the complete training process for the AlphaZero-style agent.
@@ -855,9 +914,9 @@ class BulletChessAlphaZeroTrainer:
         eval_freq = self.cfg["training"]["eval_freq"]
         save_freq = self.cfg["training"]["save_freq"]
 
-        
+        self.current_training_type = training_type
 
-        if type == "episodes":
+        if training_type == "episodes":
             for ep in range(1, episodes + 1):
                 res = self.play_one(is_training=True, episode_idx=ep, total_episodes=episodes)
 
@@ -902,8 +961,8 @@ class BulletChessAlphaZeroTrainer:
                     ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"ckpt_alphazero_ep{ep}.pth")
                     self.agent.save(ckpt_path)
                     self.logger.info(f"Checkpoint saved -> {ckpt_path}")
-        
-        elif type == "time":
+
+        elif training_type == "time":
             end_time = time.time() + overall_time
             ep = 0
             warmup = self.cfg["training"]["warmup"]
@@ -952,7 +1011,7 @@ class BulletChessAlphaZeroTrainer:
 
                 # Checkpoint
                 if ep % save_freq == 0:
-                    ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"ckpt_time_ep{ep}.pth")
+                    ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"/{self.current_training_type}/",f"ckpt_time_ep{ep}.pth")
                     self.agent.save(ckpt_path)
 
                 ep += 1
@@ -1042,7 +1101,7 @@ class BulletChessAlphaZeroTrainer:
         self.logger.info(f"Ep {self.stats['games_played'] + 1} result: {result}, reason: {mapped}")
 
         if self.stats['games_played'] % self.cfg["training"]["save_freq"] == 0:
-            self.agent.save(f"{self.cfg['paths']['models_mcts']}/checkpoint_ep{self.stats['games_played']}.pth")
+            self.agent.save(f"{self.cfg['paths']['models_mcts']}/{self.current_training_type}/checkpoint_ep{self.stats['games_played']}.pth")
 
         # track general result
         outcome = "draws"
