@@ -109,8 +109,7 @@ def get_truly_fixed_cfg():
             "strength_end": 0.3    # Final opponent strength
         },
         "paths": {
-            "models_ddqn": "models_ddqn", # Model save directory
-            "models_mcts": "models_polval", # Model save directory
+            "models": "models", # Model save directory
             "ddqn_logs": "logs_ddqn",      # Log save directory
             "mcts_logs": "logs_polval"  # Log directory
         },

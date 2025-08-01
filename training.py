@@ -93,8 +93,8 @@ class BulletChessDDQNTrainer:
         Returns:
             logger (logging.Logger): Configured logger instance.
         """
-        os.makedirs(self.cfg["paths"]["models_ddqn"], exist_ok=True)
-        os.makedirs(self.cfg["paths"]["ddqn_logs"], exist_ok=True)
+        os.makedirs(self.cfg["paths"]["models"], exist_ok=True)
+        #os.makedirs(self.cfg["paths"]["ddqn_logs"], exist_ok=True)
 
         model_name = "DDQN"
         episodes = self.cfg["training"]["episodes"]
@@ -467,13 +467,13 @@ class BulletChessDDQNTrainer:
                     # Save best model
                     if wr > self.best_win_rate:
                         self.best_win_rate = wr
-                        best_path = os.path.join(self.cfg["paths"]["models_ddqn"],f"/{self.current_training_type}/",f"best_ddqn_truly_fixed_ep{ep}.pth")
+                        best_path = os.path.join(self.cfg["paths"]["models"],f"/{self.current_training_type}/",f"best_ddqn_truly_fixed_ep{ep}.pth")
                         self.agent.save(best_path)
                         self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
 
                 # Periodic checkpointing
                 if ep % save_freq == 0:
-                    ckpt_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"ckpt_ddqn_truly_fixed_ep{ep}.pth")
+                    ckpt_path = os.path.join(self.cfg["paths"]["models"], f"ckpt_ddqn_truly_fixed_ep{ep}.pth")
                     self.agent.save(ckpt_path)
                     self.logger.info(f"Checkpoint saved -> {ckpt_path}")
                 elif type == "time":
@@ -519,13 +519,13 @@ class BulletChessDDQNTrainer:
                             wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, overall_time, eval_strength)
                             if wr > self.best_win_rate:
                                 self.best_win_rate = wr
-                                best_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"best_ddqn_time_ep{ep}.pth")
+                                best_path = os.path.join(self.cfg["paths"]["models"], f"best_ddqn_time_ep{ep}.pth")
                                 self.agent.save(best_path)
                                 self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
 
                         # Checkpoint
                         if ep % save_freq == 0:
-                            ckpt_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"ckpt_ddqn_time_ep{ep}.pth")
+                            ckpt_path = os.path.join(self.cfg["paths"]["models"], f"ckpt_ddqn_time_ep{ep}.pth")
                             self.agent.save(ckpt_path)
                             self.logger.info(f"Checkpoint saved -> {ckpt_path}")
 
@@ -585,13 +585,13 @@ class BulletChessDDQNTrainer:
                     wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, overall_time, eval_strength)
                     if wr > self.best_win_rate:
                         self.best_win_rate = wr
-                        best_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"best_ddqn_time_ep{ep}.pth")
+                        best_path = os.path.join(self.cfg["paths"]["models"], f"best_ddqn_time_ep{ep}.pth")
                         self.agent.save(best_path)
                         self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
 
                 # Checkpoint
                 if ep % save_freq == 0:
-                    ckpt_path = os.path.join(self.cfg["paths"]["models_ddqn"], f"ckpt_ddqn_time_ep{ep}.pth")
+                    ckpt_path = os.path.join(self.cfg["paths"]["models"], f"ckpt_ddqn_time_ep{ep}.pth")
                     self.agent.save(ckpt_path)
                     self.logger.info(f"Checkpoint saved -> {ckpt_path}")
 
@@ -762,7 +762,7 @@ class BulletChessAlphaZeroTrainer:
         Returns:
             logger (logging.Logger): Configured logger instance.
         """
-        os.makedirs(self.cfg["paths"]["models_mcts"], exist_ok=True)
+        os.makedirs(self.cfg["paths"]["models"], exist_ok=True)
         os.makedirs(self.cfg["paths"]["mcts_logs"], exist_ok=True)
 
         model_name = "policy_value"
@@ -1015,13 +1015,13 @@ class BulletChessAlphaZeroTrainer:
                     wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, episodes, eval_strength)
                     if wr > self.best_win_rate:
                         self.best_win_rate = wr
-                        best_path = os.path.join(self.cfg["paths"]["models_mcts"], f"best_alphazero_ep{ep}.pth")
+                        best_path = os.path.join(self.cfg["paths"]["models"], f"best_alphazero_ep{ep}.pth")
                         self.agent.save(best_path)
                         self.logger.info(f"New best model saved (win_rate={wr:.3f}) -> {best_path}")
 
                 # Checkpoint
                 if ep % save_freq == 0:
-                    ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"ckpt_alphazero_ep{ep}.pth")
+                    ckpt_path = os.path.join(self.cfg["paths"]["models"], f"ckpt_alphazero_ep{ep}.pth")
                     self.agent.save(ckpt_path)
                     self.logger.info(f"Checkpoint saved -> {ckpt_path}")
 
@@ -1082,7 +1082,7 @@ class BulletChessAlphaZeroTrainer:
                     wr, wr_true_eval = self.evaluate(self.cfg["training"]["eval_games"], ep, overall_time, eval_strength)
                     if wr > self.best_win_rate:
                         self.best_win_rate = wr
-                        best_path = os.path.join(self.cfg["paths"]["models_mcts"], f"best_alphazero_time{ep}.pth")
+                        best_path = os.path.join(self.cfg["paths"]["models"], f"best_alphazero_time{ep}.pth")
                         self.agent.save(best_path)
 
                 # Checkpoint
