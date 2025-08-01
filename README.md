@@ -95,19 +95,33 @@ pip install -r requirements.txt
 ```
 
 ## Structure of this Repository
-'agent_dqn.py' - This file contains all relevant functions and definitions for our agent that uses Deep Q-networks to learn. ([open](agent_dqn.py))
 
-'agent_policy_value.py' - This file contains all relevant functions and definitions for our agents policy. ([open](agent_policy_value.py))
+```
+.
+├── .gitignore
+├── environment.yml
+├── main.ipynb
+├── README.md
+├── requirements.txt
+├── models/
+└── src/
+    ├── agent_dqn.py
+    ├── agent_policy_value.py
+    ├── ddqn_agent.py
+    ├── debug.py
+    ├── environment.py
+    ├── play.py
+    ├── policyvalue_agent.py
+    ├── training.py
+    └── utils.py
 
-'chess_dqn_model.pth' - This file contains the trained DQN-agent. ([open](chess_dqn_model.pth))
+```
+- **models/**  
+  Contains our trained model files
 
-'environment.py' - This file contains all relevant functions and definitions for the environment our agent acts in. ([open](environment.py))
+- **src/**  
+  Contains core source code files for agents, environment, training, and utilities.
 
-'main.ipynb' - This notebook contains the script for initializing, training and finally saving the DQN model. We will add the agent-critic model here as well. ([open](main.ipynb))
-
-'play.ipynb' - This notebooks let's you play against our agent in Bullet Chess. You'll enter moves in UCI-format. Have fun! ([open](play.ipynb))
-
-'utils.py' - This file contains useful functions that might be used in the future. ([open](utils.py))
 
 ## The two Agents
 ### DDQN(Double Deep Q-Network)
@@ -185,4 +199,5 @@ The learned policy is directly given by the network’s output distribution over
 <a name="references"></a>
 [1] S. J. D. Prince, Understanding Deep Learning. The MIT Press, 2023. [website to book](https://udlbook.github.io/udlbook/)
 [2] Silver, D., Schrittwieser, J., Simonyan, K. et al. Mastering the game of Go without human knowledge. Nature 550, 354–359 (2017). [https://doi.org/10.1038/nature2427]
+
 
