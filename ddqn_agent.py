@@ -12,6 +12,16 @@ import torch.optim as optim
 import utils
 
 def load_agent_from_path(path, cfg):
+    """
+    Load a DDQN agent from a specified file path.
+
+    Args:
+        path (str): The file path to load the agent from.
+        cfg (dict): The configuration dictionary containing agent parameters.
+
+    Returns:
+        DDQNAgent: The loaded DDQN agent.
+    """
     agent = DDQNAgent(
         lr=cfg["agent"]["lr"],
         gamma=cfg["agent"]["gamma"],

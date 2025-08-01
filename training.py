@@ -7,6 +7,7 @@ from typing import List, Tuple, Dict
 import chess
 import time
 import numpy as np
+import json
 import utils
 
 
@@ -65,6 +66,7 @@ class BulletChessDDQNTrainer:
         )
 
         self.setup_logging()
+        self.training_log = {}
 
         # Training statistics
         self.best_win_rate = -1.0
@@ -94,8 +96,13 @@ class BulletChessDDQNTrainer:
         os.makedirs(self.cfg["paths"]["models_ddqn"], exist_ok=True)
         os.makedirs(self.cfg["paths"]["ddqn_logs"], exist_ok=True)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(self.cfg["paths"]["ddqn_logs"], f"ddqn_truly_fixed_{timestamp}.log")
+        model_name = "DDQN"
+        episodes = self.cfg["training"]["episodes"]
+        log_file = os.path.join(
+            self.cfg["paths"]["ddqn_logs"],
+            f"{model_name}_{self.current_training_type}_{episodes}.log"
+        )
+
 
         # Clear existing handlers
         for h in logging.root.handlers[:]:
@@ -106,7 +113,7 @@ class BulletChessDDQNTrainer:
             format="%(asctime)s - %(levelname)s - %(message)s",
             handlers=[logging.FileHandler(log_file), logging.StreamHandler()]
         )
-        self.logger = logging.getLogger("ddqn")
+        self.logger = logging.getLogger("DDQNLogger")
 
     def select_opponent_move(self, legal_actions: List[int], strength: float) -> int:
         """
@@ -422,6 +429,19 @@ class BulletChessDDQNTrainer:
                 wr_all = self.stats["wins"] / max(1, total_games)  # Win rate including draws
                 wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))  # Win rate excluding draws
 
+                # Update training log
+                self.training_log[ep] = {
+                    "reward": res["reward"],
+                    "steps": res["steps"],
+                    "outcome": res["outcome"],
+                    "result": res["result"],
+                    "agent_white": res["agent_white"],
+                    "ended_by": res["ended_by"],
+                    "loss": loss_val,
+                    "win_rate_all": wr_all,
+                    "win_rate_true": wr_true
+                }
+
                 # Periodic logging
                 if ep % log_freq == 0 or ep == 1:
                     opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end,
@@ -437,6 +457,7 @@ class BulletChessDDQNTrainer:
                         f"Lw:{self.stats['losses_white']} Lb:{self.stats['losses_black']} | "
                         f"opp_str:{opp_strength:.3f} | move_limit_rate:{ml_rate:.3f}"
                     )
+                
 
                 # Periodic evaluation
                 if ep % eval_freq == 0:
@@ -528,6 +549,19 @@ class BulletChessDDQNTrainer:
                 wr_all = self.stats["wins"] / max(1, total_games)
                 wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))
 
+                # Update training log
+                self.training_log[ep] = {
+                    "reward": res["reward"],
+                    "steps": res["steps"],
+                    "outcome": res["outcome"],
+                    "result": res["result"],
+                    "agent_white": res["agent_white"],
+                    "ended_by": res["ended_by"],
+                    "loss": loss_val,
+                    "win_rate_all": wr_all,
+                    "win_rate_true": wr_true
+                }
+
                 # Logging
                 if ep % log_freq == 0 or ep == 1:
                     elapsed_time = time.time() - (end_time - overall_time)
@@ -567,6 +601,13 @@ class BulletChessDDQNTrainer:
         for strength in [0.1, 0.15, 0.2, 0.25, 0.3]:
             wr, wr_true = self.evaluate(30, episodes, episodes, force_strength=strength)
             self.logger.info(f"vs {strength:.2f} strength: WR={wr:.3f} (true={wr_true:.3f})")
+
+        log_path = os.path.join(
+            self.cfg["paths"]["ddqn_logs"],
+            f"DDQN_{self.current_training_type}_{episodes}.json"
+        )
+        with open(log_path, "w") as f:
+            json.dump(self.training_log, f, indent=2)
 
     def evaluate(self, n_games: int, ep: int, total_episodes: int,
                  force_strength: float = None) -> Tuple[float, float]:
@@ -693,6 +734,7 @@ class BulletChessAlphaZeroTrainer:
         
 
         utils.seed_everything(cfg.get("seed", 42))
+        self.training_log = {}
         self.logger = self.setup_logging()
 
         # Initialise training statistics
@@ -723,8 +765,14 @@ class BulletChessAlphaZeroTrainer:
         os.makedirs(self.cfg["paths"]["models_mcts"], exist_ok=True)
         os.makedirs(self.cfg["paths"]["mcts_logs"], exist_ok=True)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(self.cfg["paths"]["mcts_logs"], f"alpha_zero_truly_fixed_{timestamp}.log")
+        model_name = "policy_value"
+        episodes = self.cfg["training"]["episodes"]
+        mcts_simulations = self.cfg["mcts"]["mcts_simulations"]
+        log_file = os.path.join(
+            self.cfg["paths"]["mcts_logs"],
+            f"{model_name}_{self.current_training_type}_{episodes}_mcts:{mcts_simulations}.log"
+        )
+
 
         # Clear existing handlers
         for h in logging.root.handlers[:]:
@@ -735,7 +783,7 @@ class BulletChessAlphaZeroTrainer:
             format="%(asctime)s - %(levelname)s - %(message)s",
             handlers=[logging.FileHandler(log_file), logging.StreamHandler()]
         )
-        self.logger = logging.getLogger("alpha_zero_trainer")
+        self.logger = logging.getLogger("PolicyValueLogger")
         return self.logger
 
     def self_play_game(self):
@@ -752,6 +800,7 @@ class BulletChessAlphaZeroTrainer:
         done = False
         training_examples = []
         current_player = 1  # +1 for white, -1 for black
+        total_reward = 0.0
 
         while not done:
             board_state = state  # Store current board state
@@ -764,7 +813,9 @@ class BulletChessAlphaZeroTrainer:
 
             # Step environment
             state, reward, done, info = self.env.step(action)
+            r_agent = reward if current_player == 1 else -reward
             current_player = -current_player  # switch perspective after each move
+            total_reward += r_agent
 
         # Assign values to each example based on game outcome
         result = self.env.get_result()  # e.g. '1-0', '0-1', '1/2-1/2'
@@ -784,7 +835,7 @@ class BulletChessAlphaZeroTrainer:
             value = winner * player
             training_data.append((state, pi, value))
 
-        return training_data, result, reason, current_player
+        return training_data, result, reason, current_player , total_reward
 
     def add_to_buffer(self, data):
         """        Add training data to replay buffer, maintaining maximum size.
@@ -932,6 +983,18 @@ class BulletChessAlphaZeroTrainer:
                 wr_all = self.stats["wins"] / max(1, total_games)
                 wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))
 
+                # Update training log
+                self.training_log[ep] = {
+                    "reward": res["reward"],
+                    "steps": res["steps"],
+                    "outcome": res["outcome"],
+                    "result": res["result"],
+                    "agent_white": res["agent_white"],
+                    "ended_by": res["ended_by"],
+                    "loss": loss_val,
+                    "win_rate_all": wr_all,
+                    "win_rate_true": wr_true
+                }
                 # Logging
                 if ep % log_freq == 0 or ep == 1:
                     opp_strength = utils.linear_anneal(self.opp_strength_start, self.opp_strength_end, ep, episodes)
@@ -985,6 +1048,19 @@ class BulletChessAlphaZeroTrainer:
                 wr_all = self.stats["wins"] / max(1, total_games)
                 wr_true = self.stats["wins"] / max(1, (self.stats["wins"] + self.stats["losses"]))
 
+                # Update training log
+                self.training_log[ep] = {
+                    "reward": res["reward"],
+                    "steps": res["steps"],
+                    "outcome": res["outcome"],
+                    "result": res["result"],
+                    "agent_white": res["agent_white"],
+                    "ended_by": res["ended_by"],
+                    "loss": loss_val,
+                    "win_rate_all": wr_all,
+                    "win_rate_true": wr_true
+                }
+
                 # Logging
                 if ep % log_freq == 0 or ep == 0:
                     current_time = time.time() - (end_time - overall_time)
@@ -1011,7 +1087,7 @@ class BulletChessAlphaZeroTrainer:
 
                 # Checkpoint
                 if ep % save_freq == 0:
-                    ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"/{self.current_training_type}/",f"ckpt_time_ep{ep}.pth")
+                    ckpt_path = os.path.join(self.cfg["paths"]["models_mcts"], f"_{self.current_training_type}_",f"ckpt_time_ep{ep}.pth")
                     self.agent.save(ckpt_path)
 
                 ep += 1
@@ -1021,6 +1097,15 @@ class BulletChessAlphaZeroTrainer:
         for strength in [0.1, 0.15, 0.2, 0.25, 0.3]:
             wr, wr_true = self.evaluate(30, episodes, episodes, force_strength=strength)
             self.logger.info(f"vs {strength:.2f} strength: WR={wr:.3f} (true={wr_true:.3f})")
+        
+        
+        log_path = os.path.join(
+            self.cfg["paths"]["mcts_logs"],
+            f"Policy_Value_{self.current_training_type}_{episodes}_mcts_{self.cfg["mcts"]["mcts_simulations"]}.json"
+        )
+        with open(log_path, "w") as f:
+            json.dump(self.training_log, f, indent=2)
+
 
 
     def play_one(self, is_training=True, episode_idx=0, total_episodes=0, force_eval_strength=None):
@@ -1034,7 +1119,7 @@ class BulletChessAlphaZeroTrainer:
         Returns:
             Game result dictionary with statistics
         """
-        training_data, result, reason, agent_white = self.self_play_game()
+        training_data, result, reason, agent_white, reward = self.self_play_game()
 
         if is_training:
             self.add_to_buffer(training_data)
@@ -1045,11 +1130,9 @@ class BulletChessAlphaZeroTrainer:
         ended_by = reason
 
         # Finalize and return
-        return self.finalize_episode(total_reward, ended_by, steps, agent_white)
+        return self.finalize_episode(reward, ended_by, steps, agent_white)
 
 
-
-    def _map_reason(self, reason: str) -> str:
         """
         Map detailed termination reasons to categories
         Args:
@@ -1096,13 +1179,6 @@ class BulletChessAlphaZeroTrainer:
             - Saves model checkpoint at specified intervals
             - Returns a summary dictionary with episode details
         """
-        mapped = self._map_reason(reason)
-
-        self.logger.info(f"Ep {self.stats['games_played'] + 1} result: {result}, reason: {mapped}")
-
-        if self.stats['games_played'] % self.cfg["training"]["save_freq"] == 0:
-            self.agent.save(f"{self.cfg['paths']['models_mcts']}/{self.current_training_type}/checkpoint_ep{self.stats['games_played']}.pth")
-
         # track general result
         outcome = "draws"
         if result == 1:
@@ -1123,7 +1199,7 @@ class BulletChessAlphaZeroTrainer:
                 self.stats["losses_black"] += 1
 
         # Count termination reasons
-        self.ended_by[mapped] += 1
+        self.ended_by[reason] += 1
         self.stats[outcome] += 1
         self.stats['games_played'] += 1
         return {
@@ -1131,7 +1207,7 @@ class BulletChessAlphaZeroTrainer:
             "steps": steps,
             "outcome": outcome,
             "result": "1-0" if result == 1 else "0-1" if result == -1 else "1/2-1/2",
-            "agent_white": None,  # Optional, fill if needed
+            "agent_white": agent_white,
             "ended_by": reason
         }
 
@@ -1150,4 +1226,3 @@ class BulletChessAlphaZeroTrainer:
             Counter mapping reason to count
         """
         return dict(self.ended_by)
-

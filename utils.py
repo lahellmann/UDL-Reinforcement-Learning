@@ -97,11 +97,11 @@ def get_truly_fixed_cfg():
             "episodes": 1000,      # Total training episodes
             "max_moves": 120,      # Maximum moves per game
             "move_limit_penalty": -3.0, # Penalty for reaching move limit
-            "warmup": 100,         # Episodes before learning starts
-            "log_freq": 50,        # Logging frequency
-            "eval_freq": 150,      # Evaluation frequency
+            "warmup": 50,         # Episodes before learning starts
+            "log_freq": 10,        # Logging frequency
+            "eval_freq": 100,      # Evaluation frequency
             "eval_games": 30,      # Games per evaluation
-            "save_freq": 300,       # Model saving frequency
+            "save_freq": 100,       # Model saving frequency
             'overall_time': 60 * 60,  # Total training time in seconds
         },
         "opponent": {
