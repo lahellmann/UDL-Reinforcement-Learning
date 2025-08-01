@@ -118,7 +118,8 @@ class MCTS:
             pi /= pi.sum()
         else:
             pi = visit_counts / visit_counts.sum()
-
+        
+        self.pi = pi
         return pi
 
 
@@ -150,6 +151,7 @@ class MCTSAgent:
         train_step(examples, optimizer, epochs=1): Trains the model on a list of (state, policy, value) tuples.
         save(path: str): Saves the agent's model and optimizer state to a file.
         load(path: str): Loads the agent's model and optimizer state from a file.
+        get_pi()
     Usage:
         agent = MCTSAgent(cfg, env)
         action_probs = agent.run_mcts(env)
@@ -229,7 +231,9 @@ class MCTSAgent:
             c_puct = self.cfg["mcts"]["c_puct"],
             device=self.device
         )
-        return mcts.run()
+        pi = mcts.run()
+        self.pi = pi
+        return pi
 
 
     def train_step(self, examples, epochs=1):
@@ -303,6 +307,9 @@ class MCTSAgent:
       ckpt = torch.load(path, map_location=self.device)
       self.model.load_state_dict(ckpt["model"])
       self.optimizer.load_state_dict(ckpt["optim"])
+
+    def get_pi(self):
+        return getattr(self, "pi", None)
 
 
 def load_agent_from_path(path, cfg, env):

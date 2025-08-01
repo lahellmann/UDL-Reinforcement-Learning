@@ -6,6 +6,7 @@ import time
 import utils
 from environment import BulletChessEnv
 from ddqn_agent import load_agent_from_path
+from policyvalue_agent import load_agent_from_path
 
 
 
@@ -174,6 +175,8 @@ def on_click(b):
         print("Game is over. No more moves allowed.")
         return
 
+    print("on_click started, button:", b.value)
+
     sq = b.value
     piece = board.piece_at(chess.parse_square(sq))
 
@@ -215,7 +218,10 @@ def on_click(b):
                 print("Illegal move. Try again.")
                 return
 
+        print("Before env.step with move:", move.uci())
+
         obs, reward, done, info = env.step(move.uci())
+        print(f"Done after human move: {done}")
         board = env.state.board
         selected_square = None
         clear_highlights()
@@ -261,11 +267,22 @@ def agent_turn():
     print("Obs type:", type(obs), "Shape:", getattr(obs, 'shape', None))
     print("Legal actions:", legal_actions)
 
-    action = agent.select_action(obs, legal_actions)
+    if hasattr(agent, "select_action"):
+        action = agent.select_action(obs, legal_actions)
+    elif hasattr(agent, "select_action_from_pi") and hasattr(agent, "get_pi"):
+        if agent.get_pi() is None:
+            pi = agent.run_mcts(env)
+        else:
+            pi = agent.get_pi()
+        action = agent.select_action_from_pi(pi)
+    else:
+        raise AttributeError("Agent has no valid action selection method.")
+
     uci_move = env._action_to_move(action).uci()
     print(f"Agent moves: {uci_move}")
 
     obs, reward, done, info = env.step(uci_move)
+    print(f"Done after agent move: {done}")
     board = env.state.board
     update_buttons()
     update_timer_label()
@@ -274,6 +291,8 @@ def agent_turn():
         print_game_over(info)
         disable_all_buttons()
         stop_timer()
+
+
 
 
 
@@ -341,7 +360,6 @@ import os
 
 def select_agents(models_dir="models"):
     import utils
-    from ddqn_agent import load_agent_from_path
     import os
     import ipywidgets as widgets
     from IPython.display import display, clear_output

@@ -107,8 +107,8 @@ class BulletChessEnv:
 
         # Validate move legality
         if move not in self.state.board.legal_moves:
-            return self.get_observation(), -10.0, True, {"reason": "illegal_move"}
-            return self.get_observation(), -10.0, True, {"reason": "illegal_move"}
+            print("Illegal move! Try again.")
+            return self.get_observation(), -10.0, False, {"reason": "illegal_move"}
 
         # Execute move
         self.state.board.push(move)
@@ -276,3 +276,4 @@ class BulletChessEnv:
     def get_move_count(self) -> int:
         """Get the current move count in the game"""
         return self.state.move_count
+    
