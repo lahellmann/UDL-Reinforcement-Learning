@@ -3,7 +3,7 @@ This repository contains a project for the seminar 'Understanding Deep Learning'
 ## **Table of Contents**
 - [Overview](#overview)
 - [QuickStart](#quickstart)
-- [Structure of this repository](#structure-of-this-repository)
+- [Structure of this Repository](#structure-of-this-repository)
 - [The two Agents](#the-two-agents)
 - [References](#references)
 ---
@@ -94,7 +94,7 @@ conda activate venv
 pip install -r requirements.txt
 ```
 
-## Structure of this repository
+## Structure of this Repository
 'agent_dqn.py' - This file contains all relevant functions and definitions for our agent that uses Deep Q-networks to learn. ([open](agent_dqn.py))
 
 'agent_policy_value.py' - This file contains all relevant functions and definitions for our agents policy. ([open](agent_policy_value.py))
@@ -185,3 +185,4 @@ The learned policy is directly given by the network’s output distribution over
 <a name="references"></a>
 [1] S. J. D. Prince, Understanding Deep Learning. The MIT Press, 2023. [website to book](https://udlbook.github.io/udlbook/)
 [2] Silver, D., Schrittwieser, J., Simonyan, K. et al. Mastering the game of Go without human knowledge. Nature 550, 354–359 (2017). [https://doi.org/10.1038/nature2427]
+
